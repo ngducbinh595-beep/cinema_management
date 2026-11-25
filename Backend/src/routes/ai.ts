@@ -187,7 +187,7 @@ Nhiệm vụ của bạn:
 /**
  * POST /api/ai/mood-recommend
  * Body: { mood?: string, userInput?: string }
- * Trả về gợi ý phim theo cảm xúc
+ * Trả về gợi ý phim theo cảm xúc hoặc mong muốn tự do thực tế từ MySQL
  */
 router.post("/mood-recommend", async (req, res) => {
   try {
@@ -213,27 +213,57 @@ router.post("/mood-recommend", async (req, res) => {
       thoughtful: "trầm tư, muốn xem phim tâm lý hoặc nghệ thuật có chiều sâu",
     };
 
-    const moodDesc = mood && moodMap[mood] ? moodMap[mood] : (mood || "muốn tìm một bộ phim hay");
-    const userOpinion = userInput?.trim()
-      ? `Ý kiến & mong muốn cụ thể của khách: "${userInput.trim()}"`
-      : "Khách chưa nhập thêm yêu cầu cụ thể.";
+    // 2. Lấy danh sách phim đang chiếu thực tế từ Database
+    let activeMovies: RowDataPacket[] = [];
+    try {
+      const [rows] = await pool.query<RowDataPacket[]>(
+        `SELECT id, title, rating, genre, duration_min, synopsis, format, ai_recommendation
+         FROM movies
+         WHERE status = 'now_showing'
+         ORDER BY is_featured DESC, id ASC`
+      );
+      activeMovies = rows;
+    } catch (dbErr) {
+      console.warn("[AI /mood-recommend] Lỗi query movies, dùng danh sách dự phòng:", dbErr);
+    }
+
+    const movieListStr = activeMovies.length > 0
+      ? activeMovies.map((m, idx) => `${idx + 1}. "${m.title}" (${m.genre} · ${m.duration_min} phút · ${m.rating}) - ${m.synopsis || m.ai_recommendation || ""}`).join("\n")
+      : `1. "Tín hiệu từ ngày mai" (Khoa học viễn tưởng · Tâm lý · 118 phút)
+2. "Qua miền ký ức" (Khoa học viễn tưởng · 106 phút)
+3. "Chuyến tàu bình minh" (Phiêu lưu · Cảm động · 112 phút)
+4. "Thành phố không ngủ" (Hành động · Giật gân · 124 phút)
+5. "Khu rừng biết nói" (Hoạt hình · Gia đình · 95 phút)
+6. "Mùa hè ở lại" (Tình cảm · Lãng mạn · 102 phút)`;
+
+    let userRequirementDesc = "";
+    if (userInput?.trim() && mood?.trim()) {
+      const moodDesc = moodMap[mood] || mood;
+      userRequirementDesc = `- Cảm xúc lựa chọn: "${moodDesc}"\n- Mong muốn / ý kiến cụ thể của khách: "${userInput.trim()}"\n👉 Bạn hãy kết hợp cả cảm xúc và mong muốn cụ thể để phân tích và đề xuất phim.`;
+    } else if (userInput?.trim() && !mood?.trim()) {
+      userRequirementDesc = `- Khách hàng KHÔNG chọn chủ đề cảm xúc cố định nào, mà đưa ra mong muốn cụ thể: "${userInput.trim()}"\n👉 QUAN TRỌNG: Bạn hãy phân tích thực chất mong muốn, bối cảnh và ý thích của khách hàng từ câu trên (không bị gò bó bởi chủ đề có sẵn nào) để chọn 1 bộ phim phù hợp nhất trong danh sách phim đang chiếu.`;
+    } else if (mood?.trim() && !userInput?.trim()) {
+      const moodDesc = moodMap[mood] || mood;
+      userRequirementDesc = `- Cảm xúc / tâm trạng lựa chọn: "${moodDesc}". Khách hàng chưa nhập thêm yêu cầu cụ thể.`;
+    } else {
+      userRequirementDesc = `- Khách hàng muốn AI tự do tư vấn bộ phim hay nhất, được đánh giá cao nhất và phù hợp nhất để xem tối nay tại rạp.`;
+    }
 
     const prompt = `Bạn là trợ lý AI chuyên gia điện ảnh cao cấp tại rạp Cinema Management.
-Khách hàng đang tìm kiếm gợi ý phim:
-- Cảm xúc / tâm trạng lựa chọn: "${moodDesc}"
-- ${userOpinion}
+Yêu cầu của khách hàng:
+${userRequirementDesc}
 
-Danh sách các phim hiện đang chiếu độc quyền tại Cinema Management (BẠN BẮT BUỘC CHỌN 1 BỘ PHIM PHÙ HỢP NHẤT TRONG DANH SÁCH NÀY):
-1. Tín hiệu từ ngày mai (Khoa học viễn tưởng · 118 phút) - Hành trình vượt thời gian đầy bí ẩn, kỹ xảo vũ trụ đỉnh cao chuẩn Dolby Atmos, triết lý sâu sắc.
-2. Qua miền ký ức (Khoa học viễn tưởng / Tâm lý · 106 phút) - Chuyến du hành vào những tầng ký ức sâu thẳm, âm nhạc xúc động, giàu tính nghệ thuật.
-3. Chuyến tàu bình minh (Phiêu lưu / Cảm động · 112 phút) - Chuyến tàu xuyên mây qua những dãy núi hùng vĩ, khơi gợi khát khao tuổi trẻ và ước mơ.
-4. Thành phố không ngủ (Hành động / Giật gân · 124 phút) - Tiết tấu dồn dập, rượt đuổi nghẹt thở trong màn đêm đô thị, twist liên tục.
-5. Khu rừng biết nói (Hoạt hình / Gia đình · 95 phút) - Hình ảnh thiên nhiên thơ mộng, âm nhạc êm dịu giúp giải tỏa mọi căng thẳng sau ngày dài.
-6. Mùa hè ở lại (Tình cảm / Lãng mạn · 102 phút) - Giai điệu thanh xuân trong trẻo bờ biển ngập nắng vàng, dịu êm và đong đầy rung động chân thành.
+Danh sách các phim hiện đang chiếu thực tế tại Cinema Management (BẠN BẮT BUỘC CHỌN 1 BỘ PHIM PHÙ HỢP NHẤT TRONG DANH SÁCH NÀY):
+${movieListStr}
 
-Hãy chọn phim thích hợp nhất với tâm trạng và ý kiến của khách. matchScore là số nguyên 92-99.`;
+Hãy chọn phim thích hợp nhất với mong muốn và ý kiến thực tế của khách:
+- title: Tên chính xác của bộ phim được chọn trong danh sách trên
+- genre: Thể loại và thời lượng của phim
+- matchScore: Số nguyên từ 92 đến 99 thể hiện độ tương thích
+- aiReply: Câu phản hồi thân thiện, nhiệt tình bằng Tiếng Việt (khoảng 2-3 câu), trực tiếp trả lời vào mong muốn của khách
+- reason: Phân tích điện ảnh sâu sắc, chỉ rõ lý do vì sao bộ phim đó là lựa chọn lý tưởng.`;
 
-    // 2. Gọi Gemini với JSON schema — nhanh hơn, không cần parse code fence
+    // 3. Gọi Gemini với JSON schema — nhanh hơn, không cần parse code fence
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -250,8 +280,35 @@ Hãy chọn phim thích hợp nhất với tâm trạng và ý kiến của khá
       resultData = JSON.parse(response.text || "{}") as MoodRecommendation;
       if (!resultData?.title) throw new Error("missing title");
     } catch {
-      // Fallback nếu model trả JSON không hợp lệ
-      resultData = FALLBACK_RECOMMENDATION;
+      // Fallback thông minh dựa vào từ khóa trong userInput nếu model lỗi
+      const text = (userInput || "").toLowerCase();
+      if (text.includes("yêu") || text.includes("lãng mạn") || text.includes("tình cảm") || text.includes("hẹn hò") || mood === "Ngọt ngào, hoài niệm") {
+        resultData = {
+          title: "Mùa hè ở lại",
+          genre: "Tình cảm / Lãng mạn · 102 phút",
+          matchScore: 98,
+          aiReply: userInput?.trim() ? `Dựa trên mong muốn "${userInput.trim()}" của bạn, đây là bộ phim tình cảm thanh xuân ngọt ngào và rung động nhất tối nay!` : "Bộ phim lãng mạn nhẹ nhàng rất thích hợp cho buổi hẹn hò tối nay.",
+          reason: "Giai điệu thanh xuân trong trẻo bên bờ biển ngập tràn nắng vàng, mang lại cảm xúc dịu êm và rung động chân thành.",
+        };
+      } else if (text.includes("hành động") || text.includes("kịch tính") || text.includes("gay cấn") || text.includes("hồi hộp") || text.includes("rượt đuổi") || mood === "Hồi hộp, giật gân") {
+        resultData = {
+          title: "Thành phố không ngủ",
+          genre: "Hành động / Giật gân · 124 phút",
+          matchScore: 97,
+          aiReply: userInput?.trim() ? `Dựa trên yêu cầu "${userInput.trim()}" của bạn, bộ phim hành động nghẹt thở này sẽ mang lại trải nghiệm mãn nhãn nhất!` : "Chuẩn bị tinh thần cho những cú rượt đuổi nghẹt thở trong màn đêm đô thị!",
+          reason: "Tiết tấu dồn dập, những pha rượt đuổi nghẹt thở trong màn đêm đô thị chuẩn Dolby Atmos sẽ giữ trọn sự tập trung của bạn.",
+        };
+      } else if (text.includes("chữa lành") || text.includes("thư giãn") || text.includes("hoạt hình") || text.includes("trẻ em") || text.includes("gia đình") || text.includes("căng thẳng") || mood === "Chữa lành & nhẹ nhàng") {
+        resultData = {
+          title: "Khu rừng biết nói",
+          genre: "Hoạt hình / Gia đình · 95 phút",
+          matchScore: 96,
+          aiReply: userInput?.trim() ? `Để đáp ứng mong muốn "${userInput.trim()}", bộ phim hoạt hình thiên nhiên này là liều thuốc chữa lành tuyệt vời nhất!` : "Một lựa chọn tuyệt vời để xua tan mọi mệt mỏi sau ngày dài làm việc.",
+          reason: "Hình ảnh thiên nhiên thơ mộng, âm nhạc du dương êm dịu giúp giải tỏa mọi căng thẳng sau ngày làm việc dài.",
+        };
+      } else {
+        resultData = FALLBACK_RECOMMENDATION;
+      }
     }
 
     setCached(cacheKey, resultData);
