@@ -12,6 +12,7 @@ export interface AIMoodRecommendation {
 export interface AIMoodRequestParams {
   mood?: string;
   userInput?: string;
+  excludeTitles?: string[];
 }
 
 export interface AIMoodResponse {

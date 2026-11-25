@@ -19,6 +19,7 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
   const [customInput, setCustomInput] = useState<string>("")
   const [analyzing, setAnalyzing] = useState(false)
   const [recommendation, setRecommendation] = useState<AIMoodRecommendation | null>(null)
+  const [recommendedHistory, setRecommendedHistory] = useState<string[]>([])
   const [isFallback, setIsFallback] = useState(false)
 
   const moods = [
@@ -42,135 +43,140 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
     setRecommendation(null)
   }
 
-  // Fallback thông minh phân tích theo từ khóa thực tế trong câu nhập của người dùng
-  const getSmartFallback = (mood: string | null, input: string): AIMoodRecommendation => {
-    const text = (input || "").toLowerCase()
-    if (
-      text.includes("yêu") ||
-      text.includes("lãng mạn") ||
-      text.includes("tình cảm") ||
-      text.includes("hẹn hò") ||
-      mood === "Ngọt ngào, hoài niệm"
-    ) {
-      return {
-        title: "Mùa hè ở lại",
-        genre: "Tình cảm / Lãng mạn · 102 phút",
-        matchScore: 98,
-        aiReply: input.trim()
-          ? `Dựa trên mong muốn "${input.trim()}" của bạn, đây là bộ phim tình cảm thanh xuân ngọt ngào và rung động nhất tối nay!`
-          : "Giai điệu thanh xuân trong trẻo sẽ làm dịu êm tâm hồn bạn với những rung động chân thật nhất.",
-        reason:
-          "Giai điệu thanh xuân trong trẻo bên bờ biển ngập tràn nắng vàng, mang lại cảm xúc dịu êm và rung động chân thành.",
-      }
-    }
-    if (
-      text.includes("hành động") ||
-      text.includes("kịch tính") ||
-      text.includes("gay cấn") ||
-      text.includes("hồi hộp") ||
-      text.includes("rượt đuổi") ||
-      mood === "Hồi hộp, giật gân"
-    ) {
-      return {
-        title: "Thành phố không ngủ",
-        genre: "Hành động / Giật gân · 124 phút",
-        matchScore: 97,
-        aiReply: input.trim()
-          ? `Dựa trên yêu cầu "${input.trim()}" của bạn, bộ phim hành động nghẹt thở này sẽ mang lại trải nghiệm mãn nhãn nhất!`
-          : "Chuẩn bị tinh thần cho những cú rượt đuổi nghẹt thở trong màn đêm đô thị nhé!",
-        reason:
-          "Tiết tấu dồn dập, những pha rượt đuổi nghẹt thở trong màn đêm đô thị chuẩn Dolby Atmos sẽ giữ trọn sự tập trung của bạn đến phút cuối cùng.",
-      }
-    }
-    if (
-      text.includes("chữa lành") ||
-      text.includes("thư giãn") ||
-      text.includes("hoạt hình") ||
-      text.includes("trẻ em") ||
-      text.includes("gia đình") ||
-      text.includes("căng thẳng") ||
-      mood === "Chữa lành & nhẹ nhàng"
-    ) {
-      return {
-        title: "Khu rừng biết nói",
-        genre: "Hoạt hình / Gia đình · 95 phút",
-        matchScore: 96,
-        aiReply: input.trim()
-          ? `Để đáp ứng mong muốn "${input.trim()}", bộ phim hoạt hình thiên nhiên này là liều thuốc chữa lành tuyệt vời nhất!`
-          : "Một lựa chọn tuyệt vời để xua tan mọi mệt mỏi! Tác phẩm này sẽ đem lại cho bạn không gian trong lành và an yên.",
-        reason:
-          "Hình ảnh thiên nhiên thơ mộng, âm nhạc du dương êm dịu giúp giải tỏa mọi căng thẳng sau ngày làm việc dài.",
-      }
-    }
-    if (
-      text.includes("phiêu lưu") ||
-      text.includes("xúc động") ||
-      text.includes("du lịch") ||
-      mood === "Phiêu lưu, xúc động"
-    ) {
-      return {
-        title: "Chuyến tàu bình minh",
-        genre: "Phiêu lưu / Cảm động · 112 phút",
-        matchScore: 97,
-        aiReply: input.trim()
-          ? `Đáp ứng yêu cầu "${input.trim()}", chuyến hành trình xuyên núi hùng vĩ này sẽ khơi dậy ước mơ và khát khao tuổi trẻ trong bạn!`
-          : "Chuyến tàu này mang theo những hoài bão tuổi trẻ và phong cảnh tráng lệ, rất đáng để thưởng thức trên màn ảnh lớn.",
-        reason:
-          "Hành trình kỳ diệu trên chuyến tàu xuyên mây qua những dãy núi hùng vĩ, khơi gợi khát khao tuổi trẻ và ước mơ.",
-      }
-    }
-    if (
-      text.includes("ký ức") ||
-      text.includes("tâm lý") ||
-      text.includes("nghệ thuật") ||
-      text.includes("sâu sắc")
-    ) {
-      return {
-        title: "Qua miền ký ức",
-        genre: "Khoa học viễn tưởng / Tâm lý · 106 phút",
-        matchScore: 96,
-        aiReply: input.trim()
-          ? `Với mong muốn "${input.trim()}", chuyến du hành ký ức giàu tính nghệ thuật này sẽ chạm sâu vào cảm xúc của bạn!`
-          : "Chuyến du hành vào những tầng ký ức sâu thẳm, âm nhạc xúc động, giàu tính nghệ thuật.",
-        reason:
-          "Chuyến du hành vào những tầng ký ức sâu thẳm, âm nhạc xúc động, khung hình nghệ thuật giàu chiều sâu.",
-      }
-    }
-
-    return {
+  const FALLBACK_CATALOG = [
+    {
+      title: "Thành phố không ngủ",
+      genre: "Hành động / Giật gân · 124 phút",
+      matchScore: 98,
+      keywords: ["hành động", "kịch tính", "gay cấn", "hồi hộp", "rượt đuổi", "đánh", "bắn"],
+      moods: ["Hồi hộp, giật gân"],
+      aiReply: "Chuẩn bị tinh thần cho những cú rượt đuổi nghẹt thở trong màn đêm đô thị nhé!",
+      reason: "Tiết tấu dồn dập, những pha rượt đuổi nghẹt thở trong màn đêm đô thị chuẩn Dolby Atmos sẽ giữ trọn sự tập trung của bạn đến phút cuối cùng.",
+    },
+    {
+      title: "Mùa hè ở lại",
+      genre: "Tình cảm / Lãng mạn · 102 phút",
+      matchScore: 97,
+      keywords: ["yêu", "lãng mạn", "tình cảm", "hẹn hò", "ngọt ngào", "thanh xuân", "bạn gái", "người yêu"],
+      moods: ["Ngọt ngào, hoài niệm"],
+      aiReply: "Giai điệu thanh xuân trong trẻo sẽ làm dịu êm tâm hồn bạn với những rung động chân thật nhất.",
+      reason: "Giai điệu thanh xuân trong trẻo bên bờ biển ngập tràn nắng vàng, mang lại cảm xúc dịu êm và rung động chân thành.",
+    },
+    {
+      title: "Khu rừng biết nói",
+      genre: "Hoạt hình / Gia đình · 95 phút",
+      matchScore: 96,
+      keywords: ["chữa lành", "thư giãn", "hoạt hình", "trẻ em", "gia đình", "căng thẳng", "vui vẻ", "nhẹ nhàng"],
+      moods: ["Chữa lành & nhẹ nhàng"],
+      aiReply: "Một lựa chọn tuyệt vời để xua tan mọi mệt mỏi! Tác phẩm này sẽ đem lại cho bạn không gian trong lành và an yên.",
+      reason: "Hình ảnh thiên nhiên thơ mộng, âm nhạc du dương êm dịu giúp giải tỏa mọi căng thẳng sau ngày làm việc dài.",
+    },
+    {
+      title: "Chuyến tàu bình minh",
+      genre: "Phiêu lưu / Cảm động · 112 phút",
+      matchScore: 97,
+      keywords: ["phiêu lưu", "xúc động", "du lịch", "khám phá", "hành trình", "núi"],
+      moods: ["Phiêu lưu, xúc động"],
+      aiReply: "Chuyến tàu này mang theo những hoài bão tuổi trẻ và phong cảnh tráng lệ, rất đáng để thưởng thức trên màn ảnh lớn.",
+      reason: "Hành trình kỳ diệu trên chuyến tàu xuyên mây qua những dãy núi hùng vĩ, khơi gợi khát khao tuổi trẻ và ước mơ.",
+    },
+    {
+      title: "Qua miền ký ức",
+      genre: "Khoa học viễn tưởng / Tâm lý · 106 phút",
+      matchScore: 96,
+      keywords: ["ký ức", "tâm lý", "nghệ thuật", "sâu sắc", "triết lý", "suy ngẫm"],
+      moods: ["Tò mò & khám phá"],
+      aiReply: "Chuyến du hành vào những tầng ký ức sâu thẳm, âm nhạc xúc động, giàu tính nghệ thuật.",
+      reason: "Chuyến du hành vào những tầng ký ức sâu thẳm, âm nhạc xúc động, khung hình nghệ thuật giàu chiều sâu.",
+    },
+    {
       title: "Tín hiệu từ ngày mai",
       genre: "Khoa học viễn tưởng · Tâm lý · 118 phút",
       matchScore: 98,
-      aiReply: input.trim()
-        ? `Phân tích yêu cầu "${input.trim()}" của bạn, đây là tác phẩm viễn tưởng đặc sắc nhất tại rạp rất phù hợp với gu của bạn!`
-        : "Chào bạn! AI đã phân tích toàn bộ lịch chiếu tại Cinema Management và chọn ra tác phẩm viễn tưởng đỉnh cao này dành riêng cho bạn tối nay.",
-      reason:
-        "Bộ phim đưa bạn vào hành trình vượt thời gian đầy bí ẩn, triết lý nhân sinh sâu sắc và kỹ xảo hình ảnh vũ trụ đỉnh cao chuẩn Dolby Atmos.",
+      keywords: ["viễn tưởng", "tương lai", "vũ trụ", "thời gian", "kỹ xảo", "tò mò"],
+      moods: ["Tò mò & khám phá"],
+      aiReply: "AI đã phân tích và chọn ra tác phẩm viễn tưởng đỉnh cao này dành riêng cho bạn tối nay.",
+      reason: "Bộ phim đưa bạn vào hành trình vượt thời gian đầy bí ẩn, triết lý nhân sinh sâu sắc và kỹ xảo hình ảnh vũ trụ đỉnh cao chuẩn Dolby Atmos.",
+    },
+  ]
+
+  // Fallback thông minh phân tích theo từ khóa thực tế và loại trừ các phim đã xem/không thích
+  const getSmartFallback = (
+    mood: string | null,
+    input: string,
+    excludeTitles: string[] = []
+  ): AIMoodRecommendation => {
+    const text = (input || "").toLowerCase()
+    const isNegativeOrChange = /không thích|đổi|khác|chán|bỏ qua|phim khác|bộ khác/i.test(text)
+
+    // Lọc ra các phim chưa nằm trong danh sách loại trừ
+    let candidates = FALLBACK_CATALOG.filter(
+      (m) => !excludeTitles.some((ex) => ex.toLowerCase() === m.title.toLowerCase())
+    )
+    if (candidates.length === 0) candidates = [...FALLBACK_CATALOG]
+
+    // 1. Tìm theo từ khóa trong input nếu có
+    let matched = candidates.find((m) =>
+      m.keywords.some((k) => text.includes(k))
+    )
+
+    // 2. Tìm theo mood đã chọn nếu có
+    if (!matched && mood) {
+      matched = candidates.find((m) => m.moods.includes(mood))
+    }
+
+    // 3. Nếu khách nói "không thích phim này" hoặc không khớp từ khóa nào, chọn phim đầu tiên trong candidates
+    const chosen = matched || candidates[0]
+
+    let reply = chosen.aiReply
+    if (isNegativeOrChange) {
+      reply = `AI rất tiếc vì bộ phim trước chưa làm bạn hài lòng! Mình đã đổi sang tác phẩm "${chosen.title}" với phong cách hoàn toàn mới, kịch tính và hấp dẫn hơn để bạn thưởng thức tối nay!`
+    } else if (input.trim()) {
+      reply = `Dựa trên ý kiến "${input.trim()}" của bạn, AI xin gợi ý ngay bộ phim "${chosen.title}" rất phù hợp với gu thưởng thức của bạn!`
+    }
+
+    return {
+      title: chosen.title,
+      genre: chosen.genre,
+      matchScore: chosen.matchScore,
+      aiReply: reply,
+      reason: chosen.reason,
     }
   }
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = async (forceNext = false) => {
     setAnalyzing(true)
-    setRecommendation(null)
     setIsFallback(false)
+
+    // Xác định các phim cần loại trừ
+    const isNegativeOrChange =
+      forceNext || /không thích|đổi|khác|chán|bỏ qua|phim khác|bộ khác/i.test(customInput)
+    const excludes = [...recommendedHistory]
+    if (recommendation && !excludes.includes(recommendation.title)) {
+      excludes.push(recommendation.title)
+    }
 
     try {
       const res = await aiService.getMoodRecommendation({
         mood: selectedMood || undefined,
         userInput: customInput.trim() || undefined,
+        excludeTitles: (isNegativeOrChange || excludes.length > 0) ? excludes : undefined,
       })
 
       if (res.success && res.data) {
         setRecommendation(res.data)
+        setRecommendedHistory((prev) => [...new Set([...prev, res.data!.title])])
       } else {
         setIsFallback(true)
-        const fallback = getSmartFallback(selectedMood, customInput)
+        const fallback = getSmartFallback(selectedMood, customInput, excludes)
         setRecommendation(fallback)
+        setRecommendedHistory((prev) => [...new Set([...prev, fallback.title])])
       }
     } catch {
       setIsFallback(true)
-      const fallback = getSmartFallback(selectedMood, customInput)
+      const fallback = getSmartFallback(selectedMood, customInput, excludes)
       setRecommendation(fallback)
+      setRecommendedHistory((prev) => [...new Set([...prev, fallback.title])])
     } finally {
       setAnalyzing(false)
     }
@@ -179,6 +185,7 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
   const handleReset = () => {
     setRecommendation(null)
     setIsFallback(false)
+    setCustomInput("")
   }
 
   if (!isOpen) return null
@@ -308,7 +315,7 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
 
           {/* Nút gửi yêu cầu tới AI */}
           <Button
-            onClick={handleAnalyze}
+            onClick={() => handleAnalyze()}
             disabled={analyzing}
             className="w-full h-11 rounded-xl bg-[#caef6b] font-bold text-[#090d14] hover:bg-[#b8df5b] shadow-[0_0_20px_rgba(202,239,107,0.2)] transition-all cursor-pointer"
           >
@@ -381,11 +388,19 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
                   <ArrowRight className="size-3.5 ml-1.5" />
                 </Button>
                 <button
+                  onClick={() => handleAnalyze(true)}
+                  disabled={analyzing}
+                  className="h-9 px-3 rounded-lg border border-[#caef6b]/40 bg-[#172e1c] text-xs font-semibold text-[#caef6b] hover:bg-[#203e27] hover:text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="Gợi ý một bộ phim khác phù hợp hơn"
+                >
+                  <RotateCcw className={`size-3.5 ${analyzing ? "animate-spin" : ""}`} />
+                  <span>Đổi phim khác</span>
+                </button>
+                <button
                   onClick={handleReset}
                   className="h-9 px-3 rounded-lg border border-[#23452b] bg-[#122015] text-xs font-medium text-[#9ba9ba] hover:text-white hover:bg-[#1a3320] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <RotateCcw className="size-3.5" />
-                  <span>Đổi ý kiến khác</span>
+                  <span>Nhập lại</span>
                 </button>
               </div>
             </div>

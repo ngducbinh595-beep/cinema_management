@@ -191,13 +191,26 @@ Nhiệm vụ của bạn:
  */
 router.post("/mood-recommend", async (req, res) => {
   try {
-    const { mood, userInput } = req.body as { mood?: string; userInput?: string };
+    const { mood, userInput, excludeTitles } = req.body as {
+      mood?: string;
+      userInput?: string;
+      excludeTitles?: string[];
+    };
 
-    // 1. Trả cache nếu khách đã hỏi đúng câu này trong 10 phút
-    const cacheKey = `${(mood || "").trim().toLowerCase()}|${(userInput || "").trim().toLowerCase()}`;
-    const cached = getCached(cacheKey);
-    if (cached) {
-      return res.json({ success: true, data: cached, cached: true, mood });
+    const isNegativeOrChange = /không thích|đổi|khác|chán|bỏ qua|phim khác|bộ khác/i.test(userInput || "");
+    const effectiveExcludes: string[] = Array.isArray(excludeTitles) ? [...excludeTitles] : [];
+    if (isNegativeOrChange && effectiveExcludes.length === 0) {
+      // Nếu khách phàn nàn "không thích phim này" mà chưa có danh sách loại trừ, mặc định tránh Tín hiệu từ ngày mai
+      effectiveExcludes.push("Tín hiệu từ ngày mai");
+    }
+
+    // 1. Chỉ dùng cache khi không có yêu cầu loại trừ hoặc đổi phim
+    const cacheKey = `${(mood || "").trim().toLowerCase()}|${(userInput || "").trim().toLowerCase()}|${effectiveExcludes.sort().join(",")}`;
+    if (!isNegativeOrChange && effectiveExcludes.length === 0) {
+      const cached = getCached(cacheKey);
+      if (cached) {
+        return res.json({ success: true, data: cached, cached: true, mood });
+      }
     }
 
     const moodMap: Record<string, string> = {
@@ -227,14 +240,20 @@ router.post("/mood-recommend", async (req, res) => {
       console.warn("[AI /mood-recommend] Lỗi query movies, dùng danh sách dự phòng:", dbErr);
     }
 
-    const movieListStr = activeMovies.length > 0
-      ? activeMovies.map((m, idx) => `${idx + 1}. "${m.title}" (${m.genre} · ${m.duration_min} phút · ${m.rating}) - ${m.synopsis || m.ai_recommendation || ""}`).join("\n")
-      : `1. "Tín hiệu từ ngày mai" (Khoa học viễn tưởng · Tâm lý · 118 phút)
-2. "Qua miền ký ức" (Khoa học viễn tưởng · 106 phút)
-3. "Chuyến tàu bình minh" (Phiêu lưu · Cảm động · 112 phút)
-4. "Thành phố không ngủ" (Hành động · Giật gân · 124 phút)
-5. "Khu rừng biết nói" (Hoạt hình · Gia đình · 95 phút)
-6. "Mùa hè ở lại" (Tình cảm · Lãng mạn · 102 phút)`;
+    const availableMovies = activeMovies.length > 0
+      ? activeMovies
+      : [
+          { id: 1, title: "Tín hiệu từ ngày mai", genre: "Khoa học viễn tưởng · Tâm lý", duration_min: 118, rating: "T13", synopsis: "Hành trình vượt thời gian bí ẩn và triết lý sâu sắc" },
+          { id: 2, title: "Qua miền ký ức", genre: "Khoa học viễn tưởng · Tâm lý", duration_min: 106, rating: "T13", synopsis: "Chuyến du hành vào những tầng ký ức sâu thẳm" },
+          { id: 3, title: "Chuyến tàu bình minh", genre: "Phiêu lưu · Cảm động", duration_min: 112, rating: "P", synopsis: "Hành trình kỳ diệu trên chuyến tàu xuyên mây" },
+          { id: 4, title: "Thành phố không ngủ", genre: "Hành động · Giật gân", duration_min: 124, rating: "T18", synopsis: "Rượt đuổi nghẹt thở trong màn đêm đô thị" },
+          { id: 5, title: "Khu rừng biết nói", genre: "Hoạt hình · Gia đình", duration_min: 95, rating: "P", synopsis: "Hình ảnh thiên nhiên thơ mộng chữa lành tâm hồn" },
+          { id: 6, title: "Mùa hè ở lại", genre: "Tình cảm · Lãng mạn", duration_min: 102, rating: "T13", synopsis: "Thanh xuân trong trẻo bên bờ biển ngập nắng" },
+        ] as any[];
+
+    const movieListStr = availableMovies
+      .map((m, idx) => `${idx + 1}. "${m.title}" (${m.genre} · ${m.duration_min} phút · ${m.rating}) - ${m.synopsis || m.ai_recommendation || ""}`)
+      .join("\n");
 
     let userRequirementDesc = "";
     if (userInput?.trim() && mood?.trim()) {
@@ -249,74 +268,87 @@ router.post("/mood-recommend", async (req, res) => {
       userRequirementDesc = `- Khách hàng muốn AI tự do tư vấn bộ phim hay nhất, được đánh giá cao nhất và phù hợp nhất để xem tối nay tại rạp.`;
     }
 
+    if (effectiveExcludes.length > 0) {
+      userRequirementDesc += `\n\n⛔ ĐẶC BIỆT LƯU Ý: Khách hàng ĐÃ XEM / KHÔNG THÍCH hoặc YÊU CẦU ĐỔI các phim sau: [${effectiveExcludes.map(t => `"${t}"`).join(", ")}].
+TUYỆT ĐỐI KHÔNG ĐƯỢC ĐỀ XUẤT LẠI bất kỳ phim nào trong danh sách loại trừ này!
+BẮT BUỘC CHỌN 1 BỘ PHIM KHÁC BIỆT thuộc thể loại khác trong danh sách phim đang chiếu.`;
+    }
+
     const prompt = `Bạn là trợ lý AI chuyên gia điện ảnh cao cấp tại rạp Cinema Management.
 Yêu cầu của khách hàng:
 ${userRequirementDesc}
 
-Danh sách các phim hiện đang chiếu thực tế tại Cinema Management (BẠN BẮT BUỘC CHỌN 1 BỘ PHIM PHÙ HỢP NHẤT TRONG DANH SÁCH NÀY):
+Danh sách các phim hiện đang chiếu thực tế tại Cinema Management:
 ${movieListStr}
 
-Hãy chọn phim thích hợp nhất với mong muốn và ý kiến thực tế của khách:
+Hãy chọn phim thích hợp nhất với mong muốn và ý kiến thực tế của khách (KHÔNG ĐƯỢC chọn phim nằm trong danh sách loại trừ):
 - title: Tên chính xác của bộ phim được chọn trong danh sách trên
 - genre: Thể loại và thời lượng của phim
 - matchScore: Số nguyên từ 92 đến 99 thể hiện độ tương thích
-- aiReply: Câu phản hồi thân thiện, nhiệt tình bằng Tiếng Việt (khoảng 2-3 câu), trực tiếp trả lời vào mong muốn của khách
+- aiReply: Câu phản hồi thân thiện, nhiệt tình bằng Tiếng Việt (khoảng 2-3 câu), trực tiếp trả lời vào mong muốn của khách (nếu khách chê phim trước, hãy xin lỗi khéo léo và giải thích vì sao phim mới này sẽ làm khách hài lòng)
 - reason: Phân tích điện ảnh sâu sắc, chỉ rõ lý do vì sao bộ phim đó là lựa chọn lý tưởng.`;
 
-    // 3. Gọi Gemini với JSON schema — nhanh hơn, không cần parse code fence
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: {
-        temperature: 0.6,
-        maxOutputTokens: 500,
-        responseMimeType: "application/json",
-        responseSchema: MOOD_SCHEMA,
-      },
-    });
+    // 3. Gọi Gemini với JSON schema (có bọc try/catch chống sập khi Google API quá tải)
+    let responseText = "";
+    try {
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        config: {
+          temperature: 0.7,
+          maxOutputTokens: 600,
+          responseMimeType: "application/json",
+          responseSchema: MOOD_SCHEMA,
+        },
+      });
+      responseText = response.text || "";
+    } catch (apiErr) {
+      console.warn("[AI /mood-recommend] Gemini API tạm thời bận hoặc quá tải, chuyển sang thuật toán thông minh:", apiErr);
+    }
 
     let resultData: MoodRecommendation;
     try {
-      resultData = JSON.parse(response.text || "{}") as MoodRecommendation;
+      resultData = JSON.parse(responseText || "{}") as MoodRecommendation;
       if (!resultData?.title) throw new Error("missing title");
     } catch {
-      // Fallback thông minh dựa vào từ khóa trong userInput nếu model lỗi
-      const text = (userInput || "").toLowerCase();
-      if (text.includes("yêu") || text.includes("lãng mạn") || text.includes("tình cảm") || text.includes("hẹn hò") || mood === "Ngọt ngào, hoài niệm") {
-        resultData = {
-          title: "Mùa hè ở lại",
-          genre: "Tình cảm / Lãng mạn · 102 phút",
-          matchScore: 98,
-          aiReply: userInput?.trim() ? `Dựa trên mong muốn "${userInput.trim()}" của bạn, đây là bộ phim tình cảm thanh xuân ngọt ngào và rung động nhất tối nay!` : "Bộ phim lãng mạn nhẹ nhàng rất thích hợp cho buổi hẹn hò tối nay.",
-          reason: "Giai điệu thanh xuân trong trẻo bên bờ biển ngập tràn nắng vàng, mang lại cảm xúc dịu êm và rung động chân thành.",
-        };
-      } else if (text.includes("hành động") || text.includes("kịch tính") || text.includes("gay cấn") || text.includes("hồi hộp") || text.includes("rượt đuổi") || mood === "Hồi hộp, giật gân") {
-        resultData = {
-          title: "Thành phố không ngủ",
-          genre: "Hành động / Giật gân · 124 phút",
-          matchScore: 97,
-          aiReply: userInput?.trim() ? `Dựa trên yêu cầu "${userInput.trim()}" của bạn, bộ phim hành động nghẹt thở này sẽ mang lại trải nghiệm mãn nhãn nhất!` : "Chuẩn bị tinh thần cho những cú rượt đuổi nghẹt thở trong màn đêm đô thị!",
-          reason: "Tiết tấu dồn dập, những pha rượt đuổi nghẹt thở trong màn đêm đô thị chuẩn Dolby Atmos sẽ giữ trọn sự tập trung của bạn.",
-        };
-      } else if (text.includes("chữa lành") || text.includes("thư giãn") || text.includes("hoạt hình") || text.includes("trẻ em") || text.includes("gia đình") || text.includes("căng thẳng") || mood === "Chữa lành & nhẹ nhàng") {
-        resultData = {
-          title: "Khu rừng biết nói",
-          genre: "Hoạt hình / Gia đình · 95 phút",
-          matchScore: 96,
-          aiReply: userInput?.trim() ? `Để đáp ứng mong muốn "${userInput.trim()}", bộ phim hoạt hình thiên nhiên này là liều thuốc chữa lành tuyệt vời nhất!` : "Một lựa chọn tuyệt vời để xua tan mọi mệt mỏi sau ngày dài làm việc.",
-          reason: "Hình ảnh thiên nhiên thơ mộng, âm nhạc du dương êm dịu giúp giải tỏa mọi căng thẳng sau ngày làm việc dài.",
-        };
-      } else {
-        resultData = FALLBACK_RECOMMENDATION;
-      }
+      resultData = {} as any;
     }
 
-    setCached(cacheKey, resultData);
+    // Nếu kết quả trả về vô tình vẫn trùng phim trong danh sách loại trừ, tự động chuyển sang phim hợp lệ khác
+    const isExcluded = effectiveExcludes.some(
+      (ex) => ex.toLowerCase() === (resultData.title || "").toLowerCase()
+    );
+
+    if (!resultData.title || isExcluded) {
+      // Tìm phim hợp lệ chưa bị loại trừ
+      const remainingMovies = availableMovies.filter(
+        (m) => !effectiveExcludes.some((ex) => ex.toLowerCase() === m.title.toLowerCase())
+      );
+      const chosen = remainingMovies.length > 0 ? remainingMovies[0] : availableMovies[1] || availableMovies[0];
+
+      const text = (userInput || "").toLowerCase();
+      let customReply = `AI đã lắng nghe phản hồi của bạn! Đây là tác phẩm "${chosen.title}" hoàn toàn mới và rất được yêu thích tại rạp tối nay!`;
+      if (isNegativeOrChange) {
+        customReply = `Rất tiếc vì gợi ý trước chưa hợp gu của bạn! Cinema AI đã chọn ngay tác phẩm "${chosen.title}" với phong cách hoàn toàn khác biệt để bạn thưởng thức trọn vẹn tối nay!`;
+      }
+
+      resultData = {
+        title: chosen.title,
+        genre: `${chosen.genre} · ${chosen.duration_min} phút`,
+        matchScore: 96,
+        aiReply: customReply,
+        reason: chosen.synopsis || "Tác phẩm điện ảnh đặc sắc với kịch bản hấp dẫn và hiệu ứng hình ảnh âm thanh chuẩn quốc tế.",
+      };
+    }
+
+    if (!isNegativeOrChange && effectiveExcludes.length === 0) {
+      setCached(cacheKey, resultData);
+    }
 
     return res.json({
       success: true,
       data: resultData,
-      recommendation: response.text,
+      recommendation: responseText,
       mood,
     });
   } catch (err) {
