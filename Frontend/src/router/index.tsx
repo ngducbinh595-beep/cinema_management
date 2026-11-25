@@ -78,7 +78,7 @@ export const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      { index: true, element: <LoginPage /> },
+      { index: true, element: <HomePage /> },
       { path: "login", element: <LoginPage /> },
       { path: "register", element: <RegisterPage /> },
       { path: "*", element: <NotFoundPage /> },

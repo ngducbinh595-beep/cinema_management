@@ -197,16 +197,18 @@ export const AdminOverviewPage = () => {
                     </div>
                 </div>
 
-                {/* Interactive Filter Controls */}
+                {/* Interactive Filter Controls - Cả 4 thanh được căn chuẩn bằng nhau 100% */}
                 <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 border-t border-[#1f2c3d]/60 pt-4">
-                    {/* Period Mode Selector */}
-                    <div>
-                        <label className="text-[11px] font-semibold text-[#9ba9ba]">Chế độ xem</label>
-                        <div className="mt-1 flex rounded-xl border border-[#243041] bg-[#0c1219] p-1">
+                    {/* 1. Chế độ xem */}
+                    <div className="flex flex-col">
+                        <label className="text-[11px] font-semibold text-[#9ba9ba] h-4 mb-1.5 flex items-center">
+                            Chế độ xem
+                        </label>
+                        <div className="flex h-10 w-full items-center rounded-xl border border-[#243041] bg-[#0c1219] p-1">
                             <button
                                 type="button"
                                 onClick={() => setPeriodType("day")}
-                                className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all ${
+                                className={`flex-1 h-full flex items-center justify-center rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                     periodType === "day"
                                         ? "bg-[#caef6b] text-[#090d14] shadow"
                                         : "text-[#9ba9ba] hover:text-white"
@@ -217,7 +219,7 @@ export const AdminOverviewPage = () => {
                             <button
                                 type="button"
                                 onClick={() => setPeriodType("month")}
-                                className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all ${
+                                className={`flex-1 h-full flex items-center justify-center rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                     periodType === "month"
                                         ? "bg-[#caef6b] text-[#090d14] shadow"
                                         : "text-[#9ba9ba] hover:text-white"
@@ -228,7 +230,7 @@ export const AdminOverviewPage = () => {
                             <button
                                 type="button"
                                 onClick={() => setPeriodType("range")}
-                                className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all ${
+                                className={`flex-1 h-full flex items-center justify-center rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                     periodType === "range"
                                         ? "bg-[#caef6b] text-[#090d14] shadow"
                                         : "text-[#9ba9ba] hover:text-white"
@@ -239,30 +241,30 @@ export const AdminOverviewPage = () => {
                         </div>
                     </div>
 
-                    {/* Date / Month Picker */}
-                    <div>
-                        <label className="text-[11px] font-semibold text-[#9ba9ba]">
+                    {/* 2. Chọn ngày / tháng */}
+                    <div className="flex flex-col">
+                        <label className="text-[11px] font-semibold text-[#9ba9ba] h-4 mb-1.5 flex items-center">
                             {periodType === "day"
                                 ? "Chọn ngày báo cáo"
                                 : periodType === "month"
                                 ? "Chọn tháng báo cáo"
-                                : "Chu kỳ 7 ngày gần nhất"}
+                                : "Chu kỳ báo cáo"}
                         </label>
-                        <div className="mt-1 flex items-center rounded-xl border border-[#243041] bg-[#0c1219] px-3 py-1.5">
+                        <div className="flex h-10 w-full items-center rounded-xl border border-[#243041] bg-[#0c1219] px-3">
                             <Calendar className="mr-2 size-4 text-[#caef6b] shrink-0" />
                             {periodType === "day" ? (
                                 <input
                                     type="date"
                                     value={selectedDate}
                                     onChange={(e) => setSelectedDate(e.target.value)}
-                                    className="w-full bg-transparent text-xs text-white outline-none [color-scheme:dark]"
+                                    className="h-full w-full bg-transparent text-xs text-white outline-none cursor-pointer [color-scheme:dark]"
                                 />
                             ) : periodType === "month" ? (
                                 <input
                                     type="month"
                                     value={selectedMonth}
                                     onChange={(e) => setSelectedMonth(e.target.value)}
-                                    className="w-full bg-transparent text-xs text-white outline-none [color-scheme:dark]"
+                                    className="h-full w-full bg-transparent text-xs text-white outline-none cursor-pointer [color-scheme:dark]"
                                 />
                             ) : (
                                 <span className="text-xs text-white">7 ngày gần nhất (Tự động)</span>
@@ -270,15 +272,17 @@ export const AdminOverviewPage = () => {
                         </div>
                     </div>
 
-                    {/* Cinema Selector */}
-                    <div>
-                        <label className="text-[11px] font-semibold text-[#9ba9ba]">Cụm rạp</label>
-                        <div className="mt-1 flex items-center rounded-xl border border-[#243041] bg-[#0c1219] px-3 py-1.5">
+                    {/* 3. Cụm rạp */}
+                    <div className="flex flex-col">
+                        <label className="text-[11px] font-semibold text-[#9ba9ba] h-4 mb-1.5 flex items-center">
+                            Cụm rạp
+                        </label>
+                        <div className="flex h-10 w-full items-center rounded-xl border border-[#243041] bg-[#0c1219] px-3">
                             <Building2 className="mr-2 size-4 text-[#caef6b] shrink-0" />
                             <select
                                 value={selectedCinemaId}
                                 onChange={(e) => setSelectedCinemaId(e.target.value)}
-                                className="w-full bg-transparent text-xs text-white outline-none cursor-pointer [color-scheme:dark]"
+                                className="h-full w-full bg-transparent text-xs text-white outline-none cursor-pointer [color-scheme:dark]"
                             >
                                 <option value="all">Tất cả cụm rạp</option>
                                 <option value="1">Cinema Nguyễn Du (Quận 1)</option>
@@ -289,11 +293,14 @@ export const AdminOverviewPage = () => {
                         </div>
                     </div>
 
-                    {/* Quick Info Box */}
-                    <div className="flex flex-col justify-end">
-                        <div className="rounded-xl border border-[#2a3c25] bg-[#162518] px-3 py-2 text-xs">
-                            <span className="text-[#9ba9ba]">Đang hiển thị: </span>
-                            <span className="font-bold text-[#caef6b]">
+                    {/* 4. Trạng thái hiển thị */}
+                    <div className="flex flex-col">
+                        <label className="text-[11px] font-semibold text-[#9ba9ba] h-4 mb-1.5 flex items-center">
+                            Trạng thái hiển thị
+                        </label>
+                        <div className="flex h-10 w-full items-center justify-between rounded-xl border border-[#2a3c25] bg-[#162518] px-3 text-xs">
+                            <span className="text-[#9ba9ba] shrink-0">Đang hiển thị:</span>
+                            <span className="font-bold text-[#caef6b] truncate ml-1 text-right">
                                 {periodType === "day"
                                     ? `Ngày ${formatISOToVN(selectedDate)}`
                                     : periodType === "month"
