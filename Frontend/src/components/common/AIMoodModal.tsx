@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { X, Sparkles, Film, ArrowRight, CheckCircle2, MessageSquare, Bot, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { aiService, type AIMoodRecommendation } from "@/services"
@@ -21,6 +21,17 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
   const [recommendation, setRecommendation] = useState<AIMoodRecommendation | null>(null)
   const [recommendedHistory, setRecommendedHistory] = useState<string[]>([])
   const [isFallback, setIsFallback] = useState(false)
+
+  // Đóng modal khi bấm phím Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
 
   const moods = [
     { id: "1", label: "Tò mò & khám phá", icon: "🌌" },
@@ -192,12 +203,12 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-2xl border border-[#2b442e] bg-[#0d1610] p-6 shadow-2xl custom-scrollbar">
+      <div className="relative w-full max-w-xl max-h-[92vh] flex flex-col rounded-2xl border border-[#2b442e] bg-[#0d1610] shadow-2xl overflow-hidden">
         {/* Glow hiệu ứng nền */}
         <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-[#caef6b]/15 blur-2xl" />
 
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#1c3021] pb-4">
+        {/* Header CỐ ĐỊNH ở trên cùng: Khi người dùng kéo xuống dưới, header & nút thoát vẫn luôn ghim lại */}
+        <div className="sticky top-0 z-30 flex items-center justify-between border-b border-[#1c3021] bg-[#0d1610]/95 px-6 py-4 backdrop-blur-md shrink-0 shadow-md">
           <div className="flex items-center gap-2.5">
             <div className="flex size-9 items-center justify-center rounded-lg bg-[#caef6b]/20 text-[#caef6b] shadow-[0_0_12px_rgba(202,239,107,0.2)]">
               <Sparkles className="size-5" />
@@ -216,14 +227,16 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-[#9ba9ba] hover:bg-[#18291c] hover:text-white transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 rounded-lg border border-[#1f3825] bg-[#122015] px-2.5 py-1.5 text-xs font-semibold text-[#9ba9ba] hover:border-[#caef6b]/50 hover:bg-[#1a3320] hover:text-white transition-all cursor-pointer shadow-sm"
+            title="Đóng / Thoát gợi ý (Phím Esc)"
           >
-            <X className="size-5" />
+            <X className="size-4 text-[#caef6b]" />
+            <span className="text-xs font-bold">Thoát</span>
           </button>
         </div>
 
-        {/* Form Body */}
-        <div className="mt-5 space-y-4">
+        {/* Form Body - Cuộn mượt mà bên trong, không che mất header */}
+        <div className="overflow-y-auto p-6 pt-5 space-y-4 custom-scrollbar flex-1">
           {/* Section 1: Chọn cảm xúc (Bấm 1 lần chọn, 2 lần tắt) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -401,6 +414,14 @@ export const AIMoodModal: React.FC<AIMoodModalProps> = ({
                   className="h-9 px-3 rounded-lg border border-[#23452b] bg-[#122015] text-xs font-medium text-[#9ba9ba] hover:text-white hover:bg-[#1a3320] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <span>Nhập lại</span>
+                </button>
+                <button
+                  onClick={onClose}
+                  className="h-9 px-3 rounded-lg border border-red-500/30 bg-red-950/20 text-xs font-semibold text-red-400 hover:text-white hover:bg-red-900/40 hover:border-red-500/50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="Thoát giao diện gợi ý"
+                >
+                  <X className="size-3.5" />
+                  <span>Thoát</span>
                 </button>
               </div>
             </div>

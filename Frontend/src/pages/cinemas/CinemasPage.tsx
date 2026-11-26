@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 import {
   MapPin,
   Volume2,
@@ -12,6 +12,8 @@ import {
   Sparkles,
   RotateCw,
   Building2,
+  Lock,
+  LogIn,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import cinemaImage from "@/assets/movies/cinema-interior.png"
@@ -110,14 +112,35 @@ const DISTRICT_PRESETS: Record<string, { label: string; lat: number; lng: number
 }
 
 export const CinemasPage = () => {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  // Kiểm tra trạng thái đăng nhập của người dùng
+  const [isLoggedIn] = useState(() => {
+    try {
+      const user = localStorage.getItem("user")
+      const token = localStorage.getItem("token")
+      return !!(user || token)
+    } catch {
+      return false
+    }
+  })
+
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [isLocating, setIsLocating] = useState(false)
   const [locationSource, setLocationSource] = useState<"gps" | "preset" | null>(null)
   const [locationMessage, setLocationMessage] = useState<string | null>(null)
   const [selectedPreset, setSelectedPreset] = useState<string>("")
 
-  // Lấy vị trí GPS qua Geolocation API của trình duyệt
+  // Lấy vị trí GPS qua Geolocation API của trình duyệt (Yêu cầu đăng nhập)
   const handleFindNearestWithGPS = () => {
+    // 1. Kiểm tra đăng nhập
+    if (!isLoggedIn) {
+      setLocationMessage("🔒 Chức năng định vị rạp gần nhất yêu cầu đăng nhập tài khoản. Vui lòng đăng nhập để tiếp tục!")
+      navigate("/login", { state: { from: location } })
+      return
+    }
+
     if (!navigator.geolocation) {
       setLocationMessage("Trình duyệt không hỗ trợ Geolocation. Vui lòng chọn khu vực thủ công.")
       return
@@ -145,8 +168,16 @@ export const CinemasPage = () => {
     )
   }
 
-  // Chọn khu vực thủ công khi không bật GPS
+  // Chọn khu vực thủ công khi không bật GPS (Yêu cầu đăng nhập)
   const handleSelectDistrictPreset = (presetKey: string) => {
+    // 1. Kiểm tra đăng nhập
+    if (!isLoggedIn) {
+      setSelectedPreset("")
+      setLocationMessage("🔒 Chức năng gợi ý rạp theo khu vực yêu cầu đăng nhập tài khoản. Vui lòng đăng nhập để tiếp tục!")
+      navigate("/login", { state: { from: location } })
+      return
+    }
+
     setSelectedPreset(presetKey)
     if (!presetKey) {
       setUserLocation(null)
@@ -220,11 +251,16 @@ export const CinemasPage = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-[#caef6b]">
                   TÍNH NĂNG THÔNG MINH
                 </span>
-                {userLocation && (
+                {userLocation ? (
                   <span className="rounded-full bg-[#caef6b] px-2 py-0.5 text-[10px] font-bold text-[#090d14]">
                     {locationSource === "gps" ? "Đã định vị GPS" : "Đã chọn khu vực"}
                   </span>
-                )}
+                ) : !isLoggedIn ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-300 border border-amber-500/30">
+                    <Lock className="size-3" />
+                    Yêu cầu đăng nhập
+                  </span>
+                ) : null}
               </div>
               <h2 className="mt-0.5 text-lg font-black text-white">
                 Gợi ý rạp chiếu gần bạn nhất
@@ -240,14 +276,20 @@ export const CinemasPage = () => {
             <Button
               onClick={handleFindNearestWithGPS}
               disabled={isLocating}
-              className="rounded-xl bg-[#caef6b] px-4 py-2.5 text-xs font-bold text-[#090d14] hover:bg-[#b8df5b] shadow-lg shadow-[#caef6b]/10 shrink-0"
+              className={`rounded-xl px-4 py-2.5 text-xs font-bold shadow-lg shrink-0 transition-all cursor-pointer ${
+                isLoggedIn
+                  ? "bg-[#caef6b] text-[#090d14] hover:bg-[#b8df5b] shadow-[#caef6b]/10"
+                  : "border border-[#38533d] bg-[#142618] text-[#caef6b] hover:bg-[#1a3420]"
+              }`}
             >
               {isLocating ? (
                 <RotateCw className="mr-2 size-4 animate-spin" />
+              ) : !isLoggedIn ? (
+                <Lock className="mr-2 size-4 text-[#caef6b]" />
               ) : (
                 <LocateFixed className="mr-2 size-4" />
               )}
-              {isLocating ? "Đang định vị..." : "Định vị vị trí của tôi"}
+              {isLocating ? "Đang định vị..." : !isLoggedIn ? "Đăng nhập để định vị" : "Định vị vị trí của tôi"}
             </Button>
 
             {/* Manual District Selection */}
@@ -271,12 +313,29 @@ export const CinemasPage = () => {
 
         {/* Location Notification Message */}
         {locationMessage && (
-          <div className="mt-4 rounded-xl border border-[#1f2c3d] bg-[#0c1219]/80 px-4 py-2.5 text-xs flex items-center justify-between text-[#caef6b]">
+          <div className={`mt-4 rounded-xl border px-4 py-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+            !isLoggedIn
+              ? "border-amber-500/40 bg-amber-950/30 text-amber-300"
+              : "border-[#1f2c3d] bg-[#0c1219]/80 text-[#caef6b]"
+          }`}>
             <div className="flex items-center gap-2">
-              <Sparkles className="size-4 shrink-0" />
+              {!isLoggedIn ? (
+                <Lock className="size-4 shrink-0 text-amber-400" />
+              ) : (
+                <Sparkles className="size-4 shrink-0" />
+              )}
               <span>{locationMessage}</span>
             </div>
-            {userLocation && (
+            {!isLoggedIn ? (
+              <Button
+                onClick={() => navigate("/login", { state: { from: location } })}
+                size="sm"
+                className="h-7 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-bold text-[11px] px-3 shrink-0 cursor-pointer"
+              >
+                <LogIn className="size-3 mr-1" />
+                Đăng nhập ngay
+              </Button>
+            ) : userLocation ? (
               <button
                 type="button"
                 onClick={() => {
@@ -285,11 +344,11 @@ export const CinemasPage = () => {
                   setLocationMessage(null)
                   setSelectedPreset("")
                 }}
-                className="text-[11px] underline text-[#9ba9ba] hover:text-white ml-2"
+                className="text-[11px] underline text-[#9ba9ba] hover:text-white ml-2 cursor-pointer"
               >
                 Hủy lọc khoảng cách
               </button>
-            )}
+            ) : null}
           </div>
         )}
       </div>
