@@ -11,6 +11,8 @@ import favoriteRouter from "./routes/favorite.js";
 import movieRouter from "./routes/movie.js";
 import showtimeRouter from "./routes/showtime.js";
 import roomRouter from "./routes/room.js";
+import reviewRouter from "./routes/review.js";
+import reviewRouter from "./routes/review.js";   // THÊM
 
 dotenv.config();
 
@@ -35,6 +37,8 @@ app.use("/api/favorites", favoriteRouter);
 app.use("/api/movies", movieRouter);
 app.use("/api/showtimes", showtimeRouter);
 app.use("/api/rooms", roomRouter);
+app.use("/api/reviews", reviewRouter);
+app.use("/api/reviews", reviewRouter);   // THÊM
 
 //Khởi động Server
 app.listen(PORT, async () => {
