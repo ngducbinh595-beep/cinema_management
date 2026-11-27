@@ -52,6 +52,7 @@ export async function apiRequest<T = any>(
 
     if (!response.ok) {
       return {
+        ...(typeof data === "object" && data !== null ? data : {}),
         success: false,
         message: data.message || data.error || `Lỗi yêu cầu: mã lỗi ${response.status}`,
       };

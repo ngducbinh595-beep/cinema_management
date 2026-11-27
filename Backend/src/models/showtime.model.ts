@@ -8,12 +8,17 @@ export interface ShowtimeRow {
   room_id: number;
   room_name: string;
   cinema_id: number;
+  cinema_name?: string;
+  cinema_address?: string;
   start_time_str: string;
   end_time_str: string;
   price_regular: string;
   price_vip: string;
   format: string;
   status: "active" | "cancelled" | "full";
+  total_seats?: number;
+  booked_seats?: number;
+  available_seats?: number;
 }
 
 export interface CreateShowtimeInput {
@@ -27,17 +32,40 @@ export interface CreateShowtimeInput {
   format?: string;
 }
 
-/** Danh sách suất chiếu còn hiệu lực của 1 ngày */
+/** Danh sách suất chiếu còn hiệu lực của 1 ngày (kèm số ghế trống riêng từng suất) */
 export async function getShowtimesByDate(date: string): Promise<ShowtimeRow[]> {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT s.id, s.movie_id, m.title AS movie_title,
             s.room_id, r.name AS room_name, r.cinema_id,
+            c.name AS cinema_name,
+            CONCAT_WS(', ', c.address, c.district, c.city) AS cinema_address,
             DATE_FORMAT(s.start_time, '%H:%i') AS start_time_str,
             DATE_FORMAT(s.end_time, '%H:%i') AS end_time_str,
-            s.price_regular, s.price_vip, s.format, s.status
+            s.price_regular, s.price_vip, s.format, s.status,
+            (r.rows_count * r.cols_count) AS total_seats,
+            (
+              SELECT COUNT(DISTINCT bs.seat_id)
+              FROM booking_seats bs
+              JOIN bookings b ON bs.booking_id = b.id
+              WHERE b.showtime_id = s.id
+                AND b.status <> 'cancelled'
+                AND b.payment_status <> 'refunded'
+            ) AS booked_seats,
+            GREATEST(
+              0,
+              (r.rows_count * r.cols_count) - (
+                SELECT COUNT(DISTINCT bs.seat_id)
+                FROM booking_seats bs
+                JOIN bookings b ON bs.booking_id = b.id
+                WHERE b.showtime_id = s.id
+                  AND b.status <> 'cancelled'
+                  AND b.payment_status <> 'refunded'
+              )
+            ) AS available_seats
      FROM showtimes s
      JOIN movies m ON m.id = s.movie_id
      JOIN rooms  r ON r.id = s.room_id
+     JOIN cinemas c ON c.id = r.cinema_id
      WHERE DATE(s.start_time) = ? AND s.status <> 'cancelled'
      ORDER BY s.start_time ASC`,
     [date]

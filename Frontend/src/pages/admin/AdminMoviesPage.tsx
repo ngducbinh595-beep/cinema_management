@@ -22,7 +22,6 @@ import {
     type MovieRating,
     type MovieStatus,
 } from "@/services/movie.service"
-import { getYouTubeThumbnail, isValidTrailerUrl } from "@/lib/trailer"
 
 const STATUS_LABEL: Record<MovieStatus, string> = {
     now_showing: "Đang chiếu",
@@ -63,7 +62,6 @@ export const AdminMoviesPage = () => {
     const [formRating, setFormRating] = useState<MovieRating>("T13")
     const [formStatus, setFormStatus] = useState<MovieStatus>("now_showing")
     const [formPosterUrl, setFormPosterUrl] = useState("")
-    const [formTrailerUrl, setFormTrailerUrl] = useState("")
 
     // Xóa phim
     const [deleteTarget, setDeleteTarget] = useState<AdminMovie | null>(null)
@@ -80,7 +78,6 @@ export const AdminMoviesPage = () => {
         setFormRating(movie?.rating ?? "T13")
         setFormStatus(movie?.status ?? "now_showing")
         setFormPosterUrl(movie?.poster_url ?? "")
-        setFormTrailerUrl(movie?.trailer_url ?? "")
         setNotice(null)
     }
 
@@ -120,7 +117,6 @@ export const AdminMoviesPage = () => {
         setFormRating("T13")
         setFormStatus("coming_soon")
         setFormPosterUrl("")
-        setFormTrailerUrl("")
         setNotice(null)
         setError(null)
     }
@@ -137,10 +133,6 @@ export const AdminMoviesPage = () => {
             setError("Thời lượng phải là số phút từ 1 đến 600.")
             return
         }
-        if (!isValidTrailerUrl(formTrailerUrl)) {
-            setError("Link trailer không hợp lệ. Vui lòng nhập đường dẫn bắt đầu bằng http:// hoặc https://.")
-            return
-        }
 
         setIsSaving(true)
         setError(null)
@@ -154,7 +146,6 @@ export const AdminMoviesPage = () => {
             rating: formRating,
             status: formStatus,
             poster_url: formPosterUrl.trim(),
-            trailer_url: formTrailerUrl.trim(),
         }
 
         const res = isCreating
@@ -506,43 +497,6 @@ export const AdminMoviesPage = () => {
                                         value={formPosterUrl}
                                         onChange={(e) => setFormPosterUrl(e.target.value)}
                                     />
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="m-trailer">Link Trailer (YouTube, tùy chọn)</Label>
-                                    <Input
-                                        id="m-trailer"
-                                        type="url"
-                                        placeholder="https://www.youtube.com/watch?v=..."
-                                        value={formTrailerUrl}
-                                        onChange={(e) => setFormTrailerUrl(e.target.value)}
-                                        aria-invalid={!isValidTrailerUrl(formTrailerUrl)}
-                                    />
-                                    {!isValidTrailerUrl(formTrailerUrl) ? (
-                                        <p className="text-[10px] font-semibold text-red-400">
-                                            Link phải bắt đầu bằng http:// hoặc https://
-                                        </p>
-                                    ) : getYouTubeThumbnail(formTrailerUrl) ? (
-                                        <div className="flex items-center gap-3 rounded-xl border border-[#243041] bg-[#16202c] p-2">
-                                            <img
-                                                src={getYouTubeThumbnail(formTrailerUrl) as string}
-                                                alt="Xem trước trailer"
-                                                className="h-12 w-20 rounded-lg object-cover"
-                                            />
-                                            <a
-                                                href={formTrailerUrl.trim()}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-[11px] font-semibold text-[#caef6b] hover:underline"
-                                            >
-                                                Mở trailer để kiểm tra
-                                            </a>
-                                        </div>
-                                    ) : (
-                                        <p className="text-[10px] text-[#9ba9ba]">
-                                            Link YouTube sẽ được nhúng trực tiếp; link khác sẽ mở ở tab mới.
-                                        </p>
-                                    )}
                                 </div>
 
                                 {notice && (

@@ -7,7 +7,6 @@ import {
   getMyTickets,
   getTicketByCode,
   getMemberPoints,
-  BookingError,
 } from "../models/payment.model.js";
 
 const paymentRouter = Router();
@@ -77,6 +76,7 @@ paymentRouter.post("/checkout", async (req, res) => {
       userId,
       showtimeId,
       seats,
+      sessionId,
       customerName,
       customerEmail,
       customerPhone,
@@ -101,10 +101,10 @@ paymentRouter.post("/checkout", async (req, res) => {
       });
     }
 
-    if (!paymentMethod || !["momo", "zalopay", "card"].includes(paymentMethod)) {
+    if (!paymentMethod || !["momo", "zalopay", "card", "vnpay"].includes(paymentMethod)) {
       return res.status(400).json({
         success: false,
-        message: "Phương thức thanh toán không hợp lệ! Chọn: momo, zalopay, hoặc card.",
+        message: "Phương thức thanh toán không hợp lệ! Chọn: momo, zalopay, card, hoặc vnpay.",
       });
     }
 
@@ -117,6 +117,7 @@ paymentRouter.post("/checkout", async (req, res) => {
       userId: Number(userId),
       showtimeId: Number(showtimeId),
       seats: seats as string[],
+      sessionId: sessionId ? String(sessionId) : undefined,
       customerName: String(customerName).trim(),
       customerEmail: String(customerEmail).trim(),
       customerPhone: String(customerPhone).trim(),
@@ -131,9 +132,13 @@ paymentRouter.post("/checkout", async (req, res) => {
       message: "Thanh toán thành công! Vé đã được xuất.",
       data: result,
     });
-  } catch (error) {
-    if (error instanceof BookingError) {
-      return res.status(400).json({ success: false, message: error.message });
+  } catch (error: unknown) {
+    const errObj = error as { statusCode?: number; message?: string };
+    if (errObj?.statusCode === 409) {
+      return res.status(409).json({
+        success: false,
+        message: errObj.message || "Ghế bạn chọn vừa có người đặt trước!",
+      });
     }
     console.error("Lỗi thanh toán:", error);
     return res.status(500).json({

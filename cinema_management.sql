@@ -327,16 +327,73 @@ CREATE TABLE IF NOT EXISTS favorites (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── SAMPLE BOOKING ────────────────────────────────────
-INSERT INTO bookings (user_id, showtime_id, booking_code, customer_name, customer_email, customer_phone, total_price, discount_amount, payment_method, payment_status, status, created_at)
+INSERT INTO bookings (user_id, showtime_id, booking_code, customer_name, customer_email, customer_phone, total_price, discount_amount, payment_method, payment_status, status, qr_code, created_at)
 VALUES
-  (1, 1, 'CM-2410-TNH01', 'Nguyễn Minh Anh',    'minhanh.nguyen@email.com', '0912345678', 5400000, 0, 'momo',    'paid', 'completed', '2026-10-24 08:15:00'),
-  (4, 2, 'CM-2410-TPK02', 'Lê Thị Thanh Hương', 'thanh.huong@email.com',    '0978123456', 3600000, 0, 'zalopay', 'paid', 'completed', '2026-10-24 13:20:00'),
-  (1, 3, 'CM-2410-TNH78', 'Nguyễn Minh Anh',    'minhanh.nguyen@email.com', '0912345678', 7200000, 0, 'momo',    'paid', 'upcoming',  '2026-10-24 18:45:00'),
-  (5, 4, 'CM-2410-QMK04', 'Phạm Văn Đức',       'vanduc.pham@email.com',    '0961234567', 4100000, 0, 'vnpay',   'paid', 'completed', '2026-10-24 09:10:00'),
-  (5, 5, 'CM-2410-CTB42', 'Phạm Văn Đức',       'vanduc.pham@email.com',    '0961234567', 3800000, 0, 'card',    'paid', 'completed', '2026-10-24 12:30:00'),
-  (4, 6, 'CM-2410-KRB06', 'Lê Thị Thanh Hương', 'thanh.huong@email.com',    '0978123456', 2700000, 0, 'momo',    'paid', 'completed', '2026-10-24 08:40:00'),
-  (1, 7, 'CM-2510-IMX07', 'Nguyễn Minh Anh',    'minhanh.nguyen@email.com', '0912345678', 9600000, 0, 'card',    'paid', 'upcoming',  '2026-10-25 17:00:00'),
-  (5, 8, 'CM-2510-IMX08', 'Phạm Văn Đức',       'vanduc.pham@email.com',    '0961234567', 8400000, 0, 'zalopay', 'paid', 'upcoming',  '2026-10-25 19:30:00');
+  (1, 1, 'CM-2410-TNH01', 'Nguyễn Minh Anh',    'minhanh.nguyen@email.com', '0912345678', 1020000, 0, 'momo',    'paid', 'completed', 'https://cinemamanagement.vn/checkin/CM-2410-TNH01', '2026-10-24 08:15:00'),
+  (4, 2, 'CM-2410-TPK02', 'Lê Thị Thanh Hương', 'thanh.huong@email.com',    '0978123456',  540000, 0, 'zalopay', 'paid', 'completed', 'https://cinemamanagement.vn/checkin/CM-2410-TPK02', '2026-10-24 13:20:00'),
+  (1, 3, 'CM-2410-TNH78', 'Nguyễn Minh Anh',    'minhanh.nguyen@email.com', '0912345678', 1770000, 0, 'momo',    'paid', 'upcoming',  'https://cinemamanagement.vn/checkin/CM-2410-TNH78', '2026-10-24 18:45:00'),
+  (5, 4, 'CM-2410-QMK04', 'Phạm Văn Đức',       'vanduc.pham@email.com',    '0961234567',  990000, 0, 'vnpay',   'paid', 'completed', 'https://cinemamanagement.vn/checkin/CM-2410-QMK04', '2026-10-24 09:10:00'),
+  (5, 5, 'CM-2410-CTB42', 'Phạm Văn Đức',       'vanduc.pham@email.com',    '0961234567', 1380000, 0, 'card',    'paid', 'completed', 'https://cinemamanagement.vn/checkin/CM-2410-CTB42', '2026-10-24 12:30:00'),
+  (4, 6, 'CM-2410-KRB06', 'Lê Thị Thanh Hương', 'thanh.huong@email.com',    '0978123456',  540000, 0, 'momo',    'paid', 'completed', 'https://cinemamanagement.vn/checkin/CM-2410-KRB06', '2026-10-24 08:40:00'),
+  (1, 7, 'CM-2510-IMX07', 'Nguyễn Minh Anh',    'minhanh.nguyen@email.com', '0912345678', 2000000, 0, 'card',    'paid', 'upcoming',  'https://cinemamanagement.vn/checkin/CM-2510-IMX07', '2026-10-25 17:00:00'),
+  (5, 8, 'CM-2510-IMX08', 'Phạm Văn Đức',       'vanduc.pham@email.com',    '0961234567', 1640000, 0, 'zalopay', 'paid', 'upcoming',  'https://cinemamanagement.vn/checkin/CM-2510-IMX08', '2026-10-25 19:30:00');
+
+-- ── SAMPLE SEATS & BOOKING_SEATS (Mỗi suất chiếu có sơ đồ ghế đã bán riêng biệt) ──
+INSERT IGNORE INTO seats (room_id, row_label, col_number, seat_type) VALUES
+  -- Phòng 01 (room_id = 1)
+  (1, 'B', 4, 'regular'), (1, 'B', 5, 'regular'), (1, 'B', 6, 'regular'), (1, 'B', 7, 'regular'),
+  (1, 'C', 5, 'regular'), (1, 'C', 6, 'regular'), (1, 'C', 7, 'regular'), (1, 'C', 8, 'regular'), (1, 'C', 9, 'regular'),
+  (1, 'D', 5, 'regular'), (1, 'D', 6, 'regular'), (1, 'D', 7, 'regular'), (1, 'D', 8, 'regular'),
+  (1, 'E', 4, 'regular'), (1, 'E', 5, 'regular'), (1, 'E', 6, 'regular'), (1, 'E', 7, 'regular'), (1, 'E', 8, 'regular'), (1, 'E', 9, 'regular'),
+  (1, 'F', 5, 'vip'),     (1, 'F', 6, 'vip'),     (1, 'F', 7, 'vip'),
+  (1, 'G', 7, 'vip'),     (1, 'G', 8, 'vip'),
+  -- Phòng 03 (room_id = 3)
+  (3, 'A', 6, 'regular'), (3, 'A', 7, 'regular'),
+  (3, 'B', 3, 'regular'), (3, 'B', 4, 'regular'), (3, 'B', 8, 'regular'), (3, 'B', 9, 'regular'),
+  (3, 'C', 3, 'regular'), (3, 'C', 4, 'regular'), (3, 'C', 5, 'regular'),
+  (3, 'D', 6, 'regular'), (3, 'D', 7, 'regular'), (3, 'D', 9, 'regular'), (3, 'D', 10, 'regular'),
+  (3, 'E', 5, 'regular'), (3, 'E', 6, 'regular'), (3, 'E', 7, 'regular'), (3, 'E', 8, 'regular'), (3, 'E', 9, 'regular'),
+  (3, 'F', 4, 'vip'),     (3, 'F', 5, 'vip'),     (3, 'F', 6, 'vip'),     (3, 'F', 8, 'vip'),     (3, 'F', 9, 'vip'),
+  (3, 'G', 5, 'vip'),     (3, 'G', 6, 'vip'),     (3, 'G', 8, 'vip'),     (3, 'G', 9, 'vip'),
+  -- Phòng 04 IMAX (room_id = 4)
+  (4, 'C', 6, 'regular'), (4, 'C', 7, 'regular'),
+  (4, 'D', 7, 'regular'), (4, 'D', 8, 'regular'), (4, 'D', 9, 'regular'),
+  (4, 'E', 5, 'regular'), (4, 'E', 6, 'regular'), (4, 'E', 7, 'regular'), (4, 'E', 8, 'regular'), (4, 'E', 9, 'regular'), (4, 'E', 10, 'regular'),
+  (4, 'F', 5, 'regular'), (4, 'F', 6, 'regular'), (4, 'F', 7, 'regular'), (4, 'F', 8, 'regular'), (4, 'F', 9, 'regular'), (4, 'F', 10, 'regular'),
+  (4, 'G', 7, 'vip'),     (4, 'G', 8, 'vip'),     (4, 'G', 9, 'vip'),     (4, 'G', 10, 'vip'),    (4, 'G', 11, 'vip'),
+  (4, 'H', 8, 'vip'),     (4, 'H', 9, 'vip'),     (4, 'H', 10, 'vip'),    (4, 'H', 11, 'vip');
+
+-- Suất 1 (09:30 Phòng 01): 10 ghế
+INSERT IGNORE INTO booking_seats (booking_id, seat_id)
+SELECT 1, id FROM seats WHERE room_id = 1 AND CONCAT(row_label, col_number) IN ('C5','C6','D5','D6','D7','D8','E6','E7','F6','F7');
+
+-- Suất 2 (14:00 Phòng 01): 6 ghế khác biệt
+INSERT IGNORE INTO booking_seats (booking_id, seat_id)
+SELECT 2, id FROM seats WHERE room_id = 1 AND CONCAT(row_label, col_number) IN ('B6','B7','C8','C9','E4','E5');
+
+-- Suất 3 (19:30 Phòng 01): 17 ghế giờ vàng
+INSERT IGNORE INTO booking_seats (booking_id, seat_id)
+SELECT 3, id FROM seats WHERE room_id = 1 AND CONCAT(row_label, col_number) IN ('B4','B5','C6','C7','C8','D5','D6','D7','D8','E6','E7','E8','E9','F5','F6','G7','G8');
+
+-- Suất 4 (10:00 Phòng 03): 9 ghế
+INSERT IGNORE INTO booking_seats (booking_id, seat_id)
+SELECT 4, id FROM seats WHERE room_id = 3 AND CONCAT(row_label, col_number) IN ('C4','C5','D9','D10','F4','F5','F6','G8','G9');
+
+-- Suất 5 (14:00 Phòng 03): 13 ghế
+INSERT IGNORE INTO booking_seats (booking_id, seat_id)
+SELECT 5, id FROM seats WHERE room_id = 3 AND CONCAT(row_label, col_number) IN ('A6','A7','B8','B9','D6','D7','E7','E8','E9','F8','F9','G5','G6');
+
+-- Suất 6 (09:00 Phòng 03): 6 ghế
+INSERT IGNORE INTO booking_seats (booking_id, seat_id)
+SELECT 6, id FROM seats WHERE room_id = 3 AND CONCAT(row_label, col_number) IN ('B3','B4','C3','C4','E5','E6');
+
+-- Suất 7 (18:45 Phòng 04 IMAX): 15 ghế
+INSERT IGNORE INTO booking_seats (booking_id, seat_id)
+SELECT 7, id FROM seats WHERE room_id = 4 AND CONCAT(row_label, col_number) IN ('D7','D8','D9','E7','E8','E9','E10','F7','F8','F9','F10','G7','G8','H8','H9');
+
+-- Suất 8 (21:00 Phòng 04 IMAX): 11 ghế
+INSERT IGNORE INTO booking_seats (booking_id, seat_id)
+SELECT 8, id FROM seats WHERE room_id = 4 AND CONCAT(row_label, col_number) IN ('C6','C7','E5','E6','F5','F6','G9','G10','G11','H10','H11');
 
 -- =====================================================
 -- Xác nhận import thành công
