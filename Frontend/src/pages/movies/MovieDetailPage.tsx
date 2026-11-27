@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FavoriteButton } from "@/components/common/FavoriteButton"
+import { ReviewSection } from "@/components/movies/ReviewSection"
 import { NOW_SHOWING_MOVIES, COMING_SOON_MOVIES } from "@/constants"
 import { useFavorites } from "@/hooks/useFavorites"
 import type { MainLayoutContextType } from "@/layouts/MainLayout"
@@ -367,6 +368,9 @@ export const MovieDetailPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* 4. Đánh giá phim: chấm sao & nhận xét */}
+      <ReviewSection movieId={movie.id} movieTitle={movie.title} onNotify={showToast} />
     </div>
   )
 }

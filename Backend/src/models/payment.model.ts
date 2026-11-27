@@ -16,6 +16,14 @@ export interface VoucherInfo {
   usageLeft: number;
 }
 
+/** Lỗi nghiệp vụ khi đặt vé (trả về 400 cho client, không phải lỗi hệ thống) */
+export class BookingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BookingError";
+  }
+}
+
 export interface CreateBookingParams {
   userId: number;
   showtimeId: number;
@@ -198,6 +206,28 @@ export function generateQRCodeData(bookingCode: string): string {
 }
 
 
+// 4.1 TÍNH TỔNG TIỀN VÉ PHÍA SERVER (không tin số tiền client gửi lên)
+// Hàng E, F, G là ghế VIP (cùng quy tắc với lúc giữ ghế), các hàng khác là ghế thường.
+async function computeSeatsTotal(showtimeId: number, seats: string[]): Promise<number | null> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT price_regular, price_vip FROM showtimes WHERE id = ? LIMIT 1",
+    [showtimeId]
+  );
+  if (rows.length === 0) return null;
+
+  const regular = Number(rows[0].price_regular);
+  const vip = Number(rows[0].price_vip);
+  let total = 0;
+  let counted = 0;
+  for (const seat of seats) {
+    const row = seat.trim()[0]?.toUpperCase();
+    if (!row) continue;
+    total += ["E", "F", "G"].includes(row) ? vip : regular;
+    counted++;
+  }
+  return counted > 0 ? total : null;
+}
+
 // 5. TẠO BOOKING — LƯU VÀO DATABASE VÀ CẬP NHẬT ĐIỂM TÍCH LŨY
 export async function createBooking(params: CreateBookingParams): Promise<BookingResult> {
   const {
@@ -265,8 +295,31 @@ export async function createBooking(params: CreateBookingParams): Promise<Bookin
   // 2. Tạo mã QR check-in
   const qrCode = generateQRCodeData(bookingCode);
 
-  // 3. Tính tổng thực trả
-  const finalPrice = Math.max(0, totalPrice - discountAmount);
+  // 3. Tính tổng tiền & giảm giá phía server
+  // - Tổng tiền: tính lại từ giá suất chiếu trong DB (fallback số client gửi nếu không tính được)
+  // - Giảm giá: chỉ chấp nhận khi mã voucher hợp lệ, số tiền giảm do server tính
+  const serverTotal = await computeSeatsTotal(validShowtimeId, seats);
+  const trustedTotal = serverTotal ?? totalPrice;
+
+  let trustedDiscount = 0;
+  let trustedPromo: string | undefined;
+  if (promoCode) {
+    const check = await validateVoucher(promoCode, trustedTotal);
+    if (!check.valid) throw new BookingError(check.message);
+    trustedDiscount = Math.min(check.discountAmount ?? 0, trustedTotal);
+    trustedPromo = check.voucher?.code;
+
+    // Trừ lượt dùng nguyên tử: tránh vượt giới hạn khi nhiều người dùng mã cùng lúc
+    const [used] = await pool.query<ResultSetHeader>(
+      "UPDATE vouchers SET usage_count = usage_count + 1 WHERE code = ? AND usage_count < usage_limit",
+      [trustedPromo]
+    );
+    if (used.affectedRows === 0) {
+      throw new BookingError("Mã giảm giá đã hết lượt sử dụng!");
+    }
+  }
+
+  const finalPrice = Math.max(0, trustedTotal - trustedDiscount);
 
   // 4. Lưu booking vào cơ sở dữ liệu
   const insertQuery = `
@@ -276,19 +329,30 @@ export async function createBooking(params: CreateBookingParams): Promise<Bookin
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', 'upcoming', ?)
   `;
 
-  const [result] = await pool.query<ResultSetHeader>(insertQuery, [
-    validUserId,
-    validShowtimeId,
-    bookingCode,
-    customerName,
-    customerEmail,
-    customerPhone,
-    finalPrice,
-    discountAmount,
-    promoCode || null,
-    paymentMethod,
-    qrCode,
-  ]);
+  let result: ResultSetHeader;
+  try {
+    [result] = await pool.query<ResultSetHeader>(insertQuery, [
+      validUserId,
+      validShowtimeId,
+      bookingCode,
+      customerName,
+      customerEmail,
+      customerPhone,
+      finalPrice,
+      trustedDiscount,
+      trustedPromo || null,
+      paymentMethod,
+      qrCode,
+    ]);
+  } catch (err) {
+    // Hoàn lại lượt dùng voucher nếu không tạo được đơn
+    if (trustedPromo) {
+      await pool
+        .query("UPDATE vouchers SET usage_count = GREATEST(usage_count - 1, 0) WHERE code = ?", [trustedPromo])
+        .catch(() => undefined);
+    }
+    throw err;
+  }
 
   const bookingId = result.insertId;
 
@@ -332,14 +396,6 @@ export async function createBooking(params: CreateBookingParams): Promise<Bookin
     console.error("Lưu booking_seats:", err);
   }
 
-  // 6. Tăng usage_count của voucher (nếu có promo code)
-  if (promoCode) {
-    await pool.query(
-      "UPDATE vouchers SET usage_count = usage_count + 1 WHERE code = ?",
-      [promoCode.trim().toUpperCase()]
-    );
-  }
-
   // 7. Cập nhật điểm tích lũy thành viên
   const pointsEarned = Math.floor(finalPrice / 10000);
   if (pointsEarned > 0) {
@@ -363,8 +419,8 @@ export async function createBooking(params: CreateBookingParams): Promise<Bookin
     bookingId,
     bookingCode,
     qrCode,
-    totalPrice,
-    discountAmount,
+    totalPrice: trustedTotal,
+    discountAmount: trustedDiscount,
     finalPrice,
     pointsEarned,
     paymentStatus: "paid",
