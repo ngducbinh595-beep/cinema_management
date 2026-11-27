@@ -14,30 +14,10 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { AddRoomModal } from "@/components/admin/AddRoomModal"
 import { roomService, type AdminRoom } from "@/services/room.service"
+import { pricingService, type PricingTier } from "@/services/pricing.service"
 
-const PRICING_TIERS = [
-    {
-        id: "p1",
-        timeSlot: "Ngày thường (Trước 17:00)",
-        regularPrice: "70.000 đ",
-        vipPrice: "100.000 đ",
-        applyDays: "Thứ Hai - Thứ Sáu",
-    },
-    {
-        id: "p2",
-        timeSlot: "Ngày thường (Từ 17:00)",
-        regularPrice: "90.000 đ",
-        vipPrice: "120.000 đ",
-        applyDays: "Thứ Hai - Thứ Sáu",
-    },
-    {
-        id: "p3",
-        timeSlot: "Cuối tuần (Cả ngày)",
-        regularPrice: "90.000 đ",
-        vipPrice: "120.000 đ",
-        applyDays: "Thứ Bảy, Chủ Nhật & Ngày lễ",
-    },
-]
+const formatVND = (value: number) =>
+    `${new Intl.NumberFormat("vi-VN").format(value)} đ`
 
 export const AdminRoomsPage = () => {
     const [rooms, setRooms] = useState<AdminRoom[]>([])
@@ -98,6 +78,77 @@ export const AdminRoomsPage = () => {
         void loadRooms(null)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // ── Bảng giá vé (lưu database) ─────────────────────────────
+    const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([])
+    const [isPricingLoading, setIsPricingLoading] = useState(true)
+    const [pricingError, setPricingError] = useState<string | null>(null)
+    const [pricingNotice, setPricingNotice] = useState<string | null>(null)
+    const [editingTierId, setEditingTierId] = useState<number | null>(null)
+    const [tierRegular, setTierRegular] = useState("")
+    const [tierVip, setTierVip] = useState("")
+    const [tierApplyShowtimes, setTierApplyShowtimes] = useState(true)
+    const [isTierSaving, setIsTierSaving] = useState(false)
+
+    const loadPricing = useCallback(async () => {
+        setIsPricingLoading(true)
+        const res = await pricingService.getTiers(1)
+        if (res.success && res.data) {
+            setPricingTiers(res.data)
+            setPricingError(null)
+        } else {
+            setPricingError(res.message || "Không tải được bảng giá vé từ database.")
+        }
+        setIsPricingLoading(false)
+    }, [])
+
+    useEffect(() => {
+        void loadPricing()
+    }, [loadPricing])
+
+    const startEditTier = (tier: PricingTier) => {
+        setEditingTierId(tier.id)
+        setTierRegular(String(tier.regularPrice))
+        setTierVip(String(tier.vipPrice))
+        setTierApplyShowtimes(tier.canApplyToShowtimes)
+        setPricingError(null)
+        setPricingNotice(null)
+    }
+
+    const cancelEditTier = () => {
+        setEditingTierId(null)
+        setPricingError(null)
+    }
+
+    const handleSaveTier = async (tier: PricingTier) => {
+        const regular = Number(tierRegular)
+        const vip = Number(tierVip)
+        if (!Number.isInteger(regular) || !Number.isInteger(vip) || regular < 10000 || vip < 10000) {
+            setPricingError("Giá vé phải là số nguyên, tối thiểu 10.000 đ.")
+            return
+        }
+        if (vip < regular) {
+            setPricingError("Giá ghế VIP không được thấp hơn giá ghế thường.")
+            return
+        }
+
+        setIsTierSaving(true)
+        setPricingError(null)
+        const res = await pricingService.updateTier(tier.id, {
+            regularPrice: regular,
+            vipPrice: vip,
+            applyToShowtimes: tier.canApplyToShowtimes && tierApplyShowtimes,
+        })
+        setIsTierSaving(false)
+
+        if (res.success) {
+            setEditingTierId(null)
+            setPricingNotice(res.message || "Đã cập nhật bảng giá vé.")
+            await loadPricing()
+        } else {
+            setPricingError(res.message || "Không thể cập nhật giá vé. Vui lòng thử lại.")
+        }
+    }
 
     const selectedRoom = rooms.find((room) => room.id === selectedId) || null
 
@@ -466,36 +517,143 @@ export const AdminRoomsPage = () => {
                 </div>
             </div>
 
-            {/* Pricing table */}
+            {/* Pricing table — chỉnh sửa được, lưu vào database */}
             <div className="rounded-3xl border border-[#1f2c3d] bg-[#121923] p-6 shadow-xl">
                 <div className="flex items-center justify-between border-b border-[#1f2c3d] pb-4">
                     <div>
                         <h3 className="text-base font-bold text-white">Bảng giá vé áp dụng</h3>
                         <p className="text-xs text-[#9ba9ba]">
-                            Áp dụng từ 01/10/2026 · Đơn vị tiền tệ: VNĐ
+                            Giá theo khung giờ · Đơn vị tiền tệ: VNĐ · Bấm "Sửa" để thay đổi giá
                         </p>
                     </div>
                 </div>
+
+                {pricingError && (
+                    <p className="mt-4 flex items-start gap-2 rounded-xl border border-[#682424] bg-[#2d1515] px-3 py-2 text-[11px] font-semibold text-[#ffb4b4]">
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                        {pricingError}
+                    </p>
+                )}
+                {pricingNotice && (
+                    <p className="mt-4 rounded-xl border border-[#2a3c25] bg-[#121f15] px-3 py-2 text-[11px] font-semibold text-[#caef6b]">
+                        {pricingNotice}
+                    </p>
+                )}
 
                 <div className="mt-4 overflow-x-auto">
                     <table className="w-full text-left text-xs">
                         <thead className="border-b border-[#1f2c3d] text-[11px] font-bold uppercase text-[#9ba9ba]">
                             <tr>
                                 <th className="px-4 py-3">Khung giờ</th>
-                                <th className="px-4 py-3">Thường 2D</th>
-                                <th className="px-4 py-3">VIP 2D</th>
+                                <th className="px-4 py-3">Ghế thường</th>
+                                <th className="px-4 py-3">Ghế VIP</th>
                                 <th className="px-4 py-3">Áp dụng</th>
+                                <th className="px-4 py-3 text-right">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[#1f2c3d]/60">
-                            {PRICING_TIERS.map((tier) => (
-                                <tr key={tier.id} className="hover:bg-[#16202c]">
-                                    <td className="px-4 py-3.5 font-semibold text-white">{tier.timeSlot}</td>
-                                    <td className="px-4 py-3.5 font-mono text-[#caef6b]">{tier.regularPrice}</td>
-                                    <td className="px-4 py-3.5 font-mono text-[#caef6b]">{tier.vipPrice}</td>
-                                    <td className="px-4 py-3.5 text-[#9ba9ba]">{tier.applyDays}</td>
+                            {isPricingLoading ? (
+                                <tr>
+                                    <td colSpan={5} className="px-4 py-6 text-center text-[#9ba9ba]">
+                                        <Loader2 className="mx-auto size-4 animate-spin" />
+                                    </td>
                                 </tr>
-                            ))}
+                            ) : pricingTiers.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="px-4 py-6 text-center text-[#9ba9ba]">
+                                        Chưa có bảng giá trong database.
+                                    </td>
+                                </tr>
+                            ) : (
+                                pricingTiers.map((tier) => {
+                                    const isEditing = editingTierId === tier.id
+                                    return (
+                                        <tr key={tier.id} className="align-top hover:bg-[#16202c]">
+                                            <td className="px-4 py-3.5 font-semibold text-white">{tier.timeSlot}</td>
+                                            <td className="px-4 py-3.5 font-mono text-[#caef6b]">
+                                                {isEditing ? (
+                                                    <Input
+                                                        type="number"
+                                                        min={10000}
+                                                        step={1000}
+                                                        value={tierRegular}
+                                                        onChange={(e) => setTierRegular(e.target.value)}
+                                                        className="h-9 w-32"
+                                                        aria-label="Giá ghế thường"
+                                                    />
+                                                ) : (
+                                                    formatVND(tier.regularPrice)
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3.5 font-mono text-[#caef6b]">
+                                                {isEditing ? (
+                                                    <Input
+                                                        type="number"
+                                                        min={10000}
+                                                        step={1000}
+                                                        value={tierVip}
+                                                        onChange={(e) => setTierVip(e.target.value)}
+                                                        className="h-9 w-32"
+                                                        aria-label="Giá ghế VIP"
+                                                    />
+                                                ) : (
+                                                    formatVND(tier.vipPrice)
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3.5 text-[#9ba9ba]">
+                                                {tier.applyDays}
+                                                {isEditing && (
+                                                    tier.canApplyToShowtimes ? (
+                                                        <label className="mt-2 flex cursor-pointer items-start gap-2 text-[11px] text-[#d3dce7]">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={tierApplyShowtimes}
+                                                                onChange={(e) => setTierApplyShowtimes(e.target.checked)}
+                                                                className="mt-0.5 accent-[#caef6b]"
+                                                            />
+                                                            <span>Áp dụng luôn cho các suất chiếu sắp tới thuộc khung giờ này</span>
+                                                        </label>
+                                                    ) : (
+                                                        <p className="mt-2 text-[10px] text-[#9ba9ba]">
+                                                            Ngày lễ không tự áp xuống suất chiếu — chỉnh giá từng suất khi lên lịch.
+                                                        </p>
+                                                    )
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3.5 text-right">
+                                                {isEditing ? (
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={cancelEditTier}
+                                                            disabled={isTierSaving}
+                                                            className="rounded-lg border border-[#243041] px-3 py-1.5 text-[11px] font-semibold text-[#9ba9ba] hover:text-white disabled:opacity-50"
+                                                        >
+                                                            Hủy
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void handleSaveTier(tier)}
+                                                            disabled={isTierSaving}
+                                                            className="rounded-lg bg-[#caef6b] px-3 py-1.5 text-[11px] font-bold text-[#090d14] hover:bg-[#b8df5b] disabled:opacity-60"
+                                                        >
+                                                            {isTierSaving ? "Đang lưu..." : "Lưu"}
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => startEditTier(tier)}
+                                                        className="rounded-lg border border-[#243041] px-3 py-1.5 text-[11px] font-semibold text-[#caef6b] hover:bg-[#162518]"
+                                                    >
+                                                        Sửa
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )
+                                })
+                            )}
                         </tbody>
                     </table>
                 </div>

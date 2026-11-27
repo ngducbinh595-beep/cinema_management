@@ -7,6 +7,7 @@ import {
   getMyTickets,
   getTicketByCode,
   getMemberPoints,
+  BookingError,
 } from "../models/payment.model.js";
 
 const paymentRouter = Router();
@@ -131,6 +132,9 @@ paymentRouter.post("/checkout", async (req, res) => {
       data: result,
     });
   } catch (error) {
+    if (error instanceof BookingError) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
     console.error("Lỗi thanh toán:", error);
     return res.status(500).json({
       success: false,

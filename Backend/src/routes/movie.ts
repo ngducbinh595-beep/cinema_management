@@ -64,7 +64,13 @@ function normalizeMovieInput(body: Record<string, unknown>): {
   if (body.country !== undefined) data.country = String(body.country);
   if (body.format !== undefined) data.format = String(body.format);
   if (body.poster_url !== undefined) data.poster_url = String(body.poster_url);
-  if (body.trailer_url !== undefined) data.trailer_url = String(body.trailer_url);
+  if (body.trailer_url !== undefined) {
+    const trailer = String(body.trailer_url).trim();
+    if (trailer && (trailer.length > 500 || !/^https?:\/\/\S+$/i.test(trailer))) {
+      return { data, error: "Link trailer phải là đường dẫn http(s) hợp lệ (tối đa 500 ký tự)!" };
+    }
+    data.trailer_url = trailer;
+  }
   if (body.ai_recommendation !== undefined) {
     data.ai_recommendation = String(body.ai_recommendation);
   }
