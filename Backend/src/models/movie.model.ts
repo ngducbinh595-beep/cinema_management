@@ -114,7 +114,7 @@ export async function updateMovieById(id: number, data: MovieInput): Promise<boo
   if (data.country !== undefined) push("country", data.country);
   if (data.format !== undefined) push("format", data.format);
   if (data.poster_url !== undefined) push("poster_url", data.poster_url);
-  if (data.trailer_url !== undefined) push("trailer_url", data.trailer_url || null);
+  if (data.trailer_url !== undefined) push("trailer_url", data.trailer_url);
   if (data.ai_recommendation !== undefined) push("ai_recommendation", data.ai_recommendation);
   if (data.status !== undefined) push("status", data.status);
   if (data.is_featured !== undefined) push("is_featured", data.is_featured ? 1 : 0);

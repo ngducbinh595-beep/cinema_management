@@ -5,19 +5,23 @@ import {
     CreditCard,
     ShieldCheck,
     ChevronLeft,
-    Download,
+    FileDown,
     CheckCircle2,
     Loader2,
     Sparkles,
     Star,
+    MapPin,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { NOW_SHOWING_MOVIES } from "@/constants"
+import { TicketQRCode } from "@/components/common/TicketQRCode"
+import { NOW_SHOWING_MOVIES, COMING_SOON_MOVIES } from "@/constants"
 import { paymentService, type CheckoutResult } from "@/services/payment.service"
+import { buildTicketQRPayload } from "@/lib/qrcode"
+import { exportTicketToPdf, resolveCinemaLocation } from "@/lib/ticketPdf"
 
 export const CheckoutPage = () => {
     const [searchParams] = useSearchParams()
@@ -27,10 +31,15 @@ export const CheckoutPage = () => {
     const cinemaName = searchParams.get("cinema") || "Cinema Nguyễn Du"
     const showDate = searchParams.get("date") || "Thứ Bảy, 24/10/2026"
     const showTime = searchParams.get("time") || "19:30"
-    const roomName = searchParams.get("room") || "Phòng 03"
+    const endTimeParam = searchParams.get("endTime") || ""
+    const roomName = searchParams.get("room") || "Phòng 01"
+    const formatParam = searchParams.get("format") || "2D Dolby Atmos"
     const seatsParam = searchParams.get("seats") || "F7, F8 (VIP)"
     const totalParam = searchParams.get("total") || "240000"
+    const sessionId = searchParams.get("sessionId") || ""
     const showtimeId = Number(searchParams.get("showtimeId")) || 1
+
+    const initialLocation = resolveCinemaLocation(cinemaName, searchParams.get("address"))
 
     // Parse seats thành array (VD: "F7, F8 (VIP)" → ["F7", "F8"])
     const seatsArray = seatsParam
@@ -39,8 +48,10 @@ export const CheckoutPage = () => {
         .map((s) => s.trim())
         .filter(Boolean)
 
+    const allMovies = [...NOW_SHOWING_MOVIES, ...COMING_SOON_MOVIES]
     const movie =
-        NOW_SHOWING_MOVIES.find((m) => m.title === movieTitle) || NOW_SHOWING_MOVIES[0]
+        allMovies.find((m) => m.title.toLowerCase() === movieTitle.toLowerCase()) ||
+        NOW_SHOWING_MOVIES[0]
 
     // Lấy user từ localStorage
     const storedUser = localStorage.getItem("user")
@@ -67,6 +78,7 @@ export const CheckoutPage = () => {
     // Payment states
     const [isProcessing, setIsProcessing] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
+    const [isExportingPdf, setIsExportingPdf] = useState(false)
     const [bookingResult, setBookingResult] = useState<CheckoutResult | null>(null)
     const [errorMessage, setErrorMessage] = useState("")
 
@@ -75,6 +87,18 @@ export const CheckoutPage = () => {
 
     const formatPrice = (val: number) =>
         new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(val)
+
+    // Link quay lại chọn ghế giữ nguyên đầy đủ showtimeId, giờ chiếu và phòng chiếu
+    const backToSeatsQuery = new URLSearchParams({
+        movie: movie.title,
+        cinema: cinemaName,
+        address: initialLocation.address,
+        date: showDate,
+        time: showTime,
+        room: roomName,
+        showtimeId: String(showtimeId),
+        ...(sessionId ? { sessionId } : {}),
+    }).toString()
 
     // ── Áp dụng mã giảm giá (gọi Backend) ──────────────────────
     const handleApplyPromo = async (e: React.FormEvent) => {
@@ -124,15 +148,14 @@ export const CheckoutPage = () => {
         setSimulationStep("gateway")
 
         try {
-            // Bước 1: Mô phỏng mở cổng thanh toán (0.8s)
             await new Promise((r) => setTimeout(r, 800))
             setSimulationStep("processing")
 
-            // Bước 2: Gọi API lưu booking vào database
             const res = await paymentService.checkout({
                 userId: effectiveUserId,
                 showtimeId: showtimeId || 1,
                 seats: cleanSeats,
+                sessionId: sessionId || undefined,
                 customerName: customerName.trim() || "Nguyễn Minh Anh",
                 customerEmail: customerEmail.trim() || "minhanh.nguyen@email.com",
                 customerPhone: customerPhone.trim() || "0912 345 678",
@@ -142,7 +165,6 @@ export const CheckoutPage = () => {
                 paymentMethod,
             })
 
-            // Bước 3: Mô phỏng xác nhận giao dịch thành công (0.8s)
             await new Promise((r) => setTimeout(r, 800))
             setSimulationStep("success")
 
@@ -153,10 +175,12 @@ export const CheckoutPage = () => {
                 setBookingResult(res.data)
                 setIsSuccess(true)
 
-                // Cập nhật points trong localStorage
                 const currentUser = user || { id: 1, name: customerName, points: 120 }
                 if (res.data.pointsEarned > 0) {
-                    const updatedUser = { ...currentUser, points: (currentUser.points || 0) + res.data.pointsEarned }
+                    const updatedUser = {
+                        ...currentUser,
+                        points: (currentUser.points || 0) + res.data.pointsEarned,
+                    }
                     localStorage.setItem("user", JSON.stringify(updatedUser))
                 }
             } else {
@@ -170,12 +194,65 @@ export const CheckoutPage = () => {
         }
     }
 
+    // ── Xuất vé PDF từ màn hình Xác nhận thành công ─────────────
+    const handleExportPdf = async () => {
+        if (!bookingResult || isExportingPdf) return
+        setIsExportingPdf(true)
+        try {
+            const resolvedCinema = bookingResult.cinemaName || cinemaName
+            const resolvedLoc = resolveCinemaLocation(
+                resolvedCinema,
+                bookingResult.cinemaAddress || initialLocation.address,
+                bookingResult.cinemaPhone || initialLocation.phone
+            )
+            const timeRange = bookingResult.showtime
+                ? `${bookingResult.showtime}${bookingResult.endTime ? ` - ${bookingResult.endTime}` : ""}`
+                : `${showTime}${endTimeParam ? ` - ${endTimeParam}` : ""}`
+
+            await exportTicketToPdf({
+                bookingCode: bookingResult.bookingCode,
+                movieTitle: movie.title,
+                movieRating: movie.rating,
+                movieGenre: movie.genre,
+                movieDuration: movie.duration,
+                posterUrl: movie.poster,
+                cinemaName: resolvedCinema,
+                cinemaAddress: resolvedLoc.address,
+                cinemaPhone: resolvedLoc.phone,
+                roomName: bookingResult.roomName || roomName,
+                showtime: timeRange,
+                showDate: bookingResult.showDate || showDate,
+                seats: seatsParam,
+                format: bookingResult.format || formatParam,
+                totalPriceText: formatPrice(bookingResult.finalPrice),
+                discountAmount: bookingResult.discountAmount,
+                paymentMethod,
+                customerName: customerName.trim(),
+                customerPhone: customerPhone.trim(),
+                customerEmail: customerEmail.trim(),
+                status: "upcoming",
+                qrCode: bookingResult.qrCode,
+                createdAt: new Date().toLocaleString("vi-VN"),
+            })
+        } catch (err) {
+            console.error("Lỗi xuất vé PDF:", err)
+        } finally {
+            setIsExportingPdf(false)
+        }
+    }
+
+    const effectiveCinemaAddress = resolveCinemaLocation(
+        bookingResult?.cinemaName || cinemaName,
+        bookingResult?.cinemaAddress || initialLocation.address,
+        bookingResult?.cinemaPhone || initialLocation.phone
+    ).address
+
     return (
         <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-8 lg:px-12 lg:py-12">
             {/* 1. Step Indicator Bar */}
             <div className="mb-8 flex items-center justify-between border-b border-[#1f2c3d] pb-6">
                 <Link
-                    to={`/booking/seats?movie=${encodeURIComponent(movieTitle)}`}
+                    to={`/booking/seats?${backToSeatsQuery}`}
                     className="flex items-center gap-1.5 text-xs text-[#9ba9ba] hover:text-white transition-colors"
                 >
                     <ChevronLeft className="size-4" /> Quay lại chọn ghế
@@ -214,7 +291,7 @@ export const CheckoutPage = () => {
                     Hoàn tất buổi hẹn điện ảnh
                 </h1>
                 <p className="mt-1 text-sm text-[#9ba9ba]">
-                    Kiểm tra thông tin đặt vé và chọn phương thức thanh toán.
+                    Kiểm tra thông tin đặt vé, địa chỉ rạp và chọn phương thức thanh toán.
                 </p>
             </div>
 
@@ -255,7 +332,7 @@ export const CheckoutPage = () => {
                                 required
                             />
                             <p className="text-[11px] text-[#9ba9ba] pt-1">
-                                Vé điện tử và mã QR sẽ được gửi trực tiếp đến email và số điện thoại trên.
+                                Vé điện tử PDF kèm mã QR check-in sẽ được kích hoạt ngay sau khi thanh toán thành công.
                             </p>
                         </div>
                     </div>
@@ -264,14 +341,14 @@ export const CheckoutPage = () => {
                     <div className="rounded-3xl border border-[#1f2c3d] bg-[#121923] p-6 shadow-xl">
                         <h2 className="text-base font-bold text-white mb-4">Phương thức thanh toán</h2>
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                            {/* MoMo */}
                             <button
                                 type="button"
                                 onClick={() => setPaymentMethod("momo")}
-                                className={`flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all ${paymentMethod === "momo"
+                                className={`flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all cursor-pointer ${
+                                    paymentMethod === "momo"
                                         ? "border-[#caef6b] bg-[#162518] shadow-md shadow-[#caef6b]/10"
                                         : "border-[#243041] bg-[#1a2431] hover:border-[#3b4c63]"
-                                    }`}
+                                }`}
                             >
                                 <div className="flex size-9 items-center justify-center rounded-xl bg-[#a50064] text-white font-black text-xs">
                                     MoMo
@@ -280,14 +357,14 @@ export const CheckoutPage = () => {
                                 <span className="text-[10px] text-[#9ba9ba]">Quét mã QR</span>
                             </button>
 
-                            {/* ZaloPay */}
                             <button
                                 type="button"
                                 onClick={() => setPaymentMethod("zalopay")}
-                                className={`flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all ${paymentMethod === "zalopay"
+                                className={`flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all cursor-pointer ${
+                                    paymentMethod === "zalopay"
                                         ? "border-[#caef6b] bg-[#162518] shadow-md shadow-[#caef6b]/10"
                                         : "border-[#243041] bg-[#1a2431] hover:border-[#3b4c63]"
-                                    }`}
+                                }`}
                             >
                                 <div className="flex size-9 items-center justify-center rounded-xl bg-[#0068ff] text-white font-black text-xs">
                                     Zalo
@@ -296,14 +373,14 @@ export const CheckoutPage = () => {
                                 <span className="text-[10px] text-[#9ba9ba]">Ví hoặc ngân hàng</span>
                             </button>
 
-                            {/* Bank Card */}
                             <button
                                 type="button"
                                 onClick={() => setPaymentMethod("card")}
-                                className={`flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all ${paymentMethod === "card"
+                                className={`flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all cursor-pointer ${
+                                    paymentMethod === "card"
                                         ? "border-[#caef6b] bg-[#162518] shadow-md shadow-[#caef6b]/10"
                                         : "border-[#243041] bg-[#1a2431] hover:border-[#3b4c63]"
-                                    }`}
+                                }`}
                             >
                                 <div className="flex size-9 items-center justify-center rounded-xl bg-[#243041] text-[#caef6b]">
                                     <CreditCard className="size-5" />
@@ -312,14 +389,14 @@ export const CheckoutPage = () => {
                                 <span className="text-[10px] text-[#9ba9ba]">ATM / Visa / Master</span>
                             </button>
 
-                            {/* VNPAY */}
                             <button
                                 type="button"
                                 onClick={() => setPaymentMethod("vnpay")}
-                                className={`flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all ${paymentMethod === "vnpay"
+                                className={`flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all cursor-pointer ${
+                                    paymentMethod === "vnpay"
                                         ? "border-[#caef6b] bg-[#162518] shadow-md shadow-[#caef6b]/10"
                                         : "border-[#243041] bg-[#1a2431] hover:border-[#3b4c63]"
-                                    }`}
+                                }`}
                             >
                                 <div className="flex size-9 items-center justify-center rounded-xl bg-[#005ba6] text-white font-black text-[10px]">
                                     VNPAY
@@ -330,7 +407,7 @@ export const CheckoutPage = () => {
                         </div>
                     </div>
 
-                    {/* Promo Code Box — Kết nối Backend */}
+                    {/* Promo Code Box */}
                     <div className="rounded-3xl border border-[#1f2c3d] bg-[#121923] p-6 shadow-xl">
                         <h2 className="text-base font-bold text-white mb-3">Mã giảm giá / Voucher</h2>
                         <form onSubmit={handleApplyPromo} className="flex gap-2">
@@ -362,8 +439,13 @@ export const CheckoutPage = () => {
                             </Button>
                         </form>
                         {promoMessage && (
-                            <p className={`mt-2 text-xs font-semibold ${promoApplied ? "text-[#caef6b]" : "text-red-400"}`}>
-                                {promoApplied ? "✓ " : "✗ "}{promoMessage}
+                            <p
+                                className={`mt-2 text-xs font-semibold ${
+                                    promoApplied ? "text-[#caef6b]" : "text-red-400"
+                                }`}
+                            >
+                                {promoApplied ? "✓ " : "✗ "}
+                                {promoMessage}
                             </p>
                         )}
                     </div>
@@ -386,7 +468,7 @@ export const CheckoutPage = () => {
                         <Button
                             onClick={handlePaymentSubmit}
                             disabled={!agreeTerms || isProcessing || isSuccess}
-                            className="w-full rounded-2xl bg-[#caef6b] py-3 text-base font-black text-[#090d14] hover:bg-[#b8df5b] shadow-xl shadow-[#caef6b]/15 transition-all disabled:opacity-50"
+                            className="w-full rounded-2xl bg-[#caef6b] py-3 text-base font-black text-[#090d14] hover:bg-[#b8df5b] shadow-xl shadow-[#caef6b]/15 transition-all disabled:opacity-50 cursor-pointer"
                         >
                             {isProcessing ? (
                                 <span className="flex items-center gap-2">
@@ -422,16 +504,28 @@ export const CheckoutPage = () => {
                                 <Badge className="border-[#2a3c25] bg-[#162518] text-[#caef6b] text-[10px]">
                                     {movie.rating}
                                 </Badge>
-                                <h3 className="text-sm font-bold text-white line-clamp-1">{movie.title}</h3>
+                                <h3 className="text-sm font-bold text-white line-clamp-1">
+                                    {movie.title}
+                                </h3>
                                 <p className="text-[11px] text-[#9ba9ba]">{movie.genre}</p>
-                                <p className="text-[11px] text-[#9ba9ba]">2D Dolby Atmos</p>
+                                <p className="text-[11px] text-[#caef6b] font-medium">
+                                    {formatParam}
+                                </p>
                             </div>
                         </div>
 
                         <div className="mt-6 space-y-3 divide-y divide-[#1f2c3d]/60 text-xs">
-                            <div className="flex justify-between pt-2">
-                                <span className="text-[#9ba9ba]">Rạp</span>
-                                <span className="font-semibold text-white">{cinemaName}</span>
+                            <div className="flex justify-between gap-3 pt-2">
+                                <span className="text-[#9ba9ba] shrink-0">Rạp</span>
+                                <span className="font-semibold text-white text-right">
+                                    {cinemaName}
+                                </span>
+                            </div>
+                            <div className="flex justify-between gap-3 pt-3">
+                                <span className="text-[#9ba9ba] shrink-0">Địa chỉ</span>
+                                <span className="text-[11px] text-[#d3dce7] text-right">
+                                    {effectiveCinemaAddress}
+                                </span>
                             </div>
                             <div className="flex justify-between pt-3">
                                 <span className="text-[#9ba9ba]">Phòng</span>
@@ -443,18 +537,24 @@ export const CheckoutPage = () => {
                                     {showTime} · {showDate}
                                 </span>
                             </div>
-                            <div className="flex justify-between pt-3">
-                                <span className="text-[#9ba9ba]">Ghế đã chọn</span>
-                                <span className="font-bold text-[#caef6b]">{seatsParam}</span>
+                            <div className="flex justify-between gap-3 pt-3">
+                                <span className="text-[#9ba9ba] shrink-0">Ghế đã chọn</span>
+                                <span className="font-bold text-[#caef6b] text-right">
+                                    {seatsParam}
+                                </span>
                             </div>
                             <div className="flex justify-between pt-3">
                                 <span className="text-[#9ba9ba]">Tạm tính</span>
-                                <span className="font-semibold text-white">{formatPrice(numTotal)}</span>
+                                <span className="font-semibold text-white">
+                                    {formatPrice(numTotal)}
+                                </span>
                             </div>
                             {discount > 0 && (
                                 <div className="flex justify-between pt-3">
                                     <span className="text-[#caef6b]">Khuyến mãi</span>
-                                    <span className="font-semibold text-[#caef6b]">-{formatPrice(discount)}</span>
+                                    <span className="font-semibold text-[#caef6b]">
+                                        -{formatPrice(discount)}
+                                    </span>
                                 </div>
                             )}
                             <div className="flex justify-between pt-3">
@@ -477,45 +577,30 @@ export const CheckoutPage = () => {
                                 </span>
                             </div>
 
-                            {/* QR Code Container */}
-                            <div className="relative mx-auto my-1 flex size-36 items-center justify-center rounded-2xl bg-white p-2.5 shadow-md">
-                                <svg viewBox="0 0 100 100" className="size-full text-[#090d14]" fill="currentColor">
-                                    {/* Top-left marker */}
-                                    <rect x="5" y="5" width="26" height="26" rx="4" />
-                                    <rect x="9" y="9" width="18" height="18" fill="white" />
-                                    <rect x="13" y="13" width="10" height="10" />
-
-                                    {/* Top-right marker */}
-                                    <rect x="69" y="5" width="26" height="26" rx="4" />
-                                    <rect x="73" y="9" width="18" height="18" fill="white" />
-                                    <rect x="77" y="13" width="10" height="10" />
-
-                                    {/* Bottom-left marker */}
-                                    <rect x="5" y="69" width="26" height="26" rx="4" />
-                                    <rect x="9" y="73" width="18" height="18" fill="white" />
-                                    <rect x="13" y="77" width="10" height="10" />
-
-                                    {/* Data pattern */}
-                                    <rect x="36" y="10" width="8" height="8" />
-                                    <rect x="48" y="10" width="14" height="8" />
-                                    <rect x="36" y="24" width="20" height="8" />
-                                    <rect x="10" y="36" width="8" height="16" />
-                                    <rect x="22" y="38" width="14" height="14" />
-                                    <rect x="42" y="38" width="16" height="16" rx="3" fill={paymentMethod === "momo" ? "#a50064" : paymentMethod === "zalopay" ? "#0068ff" : paymentMethod === "vnpay" ? "#005ba6" : "#090d14"} />
-                                    <rect x="64" y="36" width="26" height="8" />
-                                    <rect x="64" y="48" width="12" height="12" />
-                                    <rect x="80" y="48" width="10" height="24" />
-                                    <rect x="36" y="60" width="22" height="12" />
-                                    <rect x="36" y="78" width="12" height="14" />
-                                    <rect x="52" y="78" width="24" height="14" />
-                                </svg>
-
-                                {/* Center logo badge */}
+                            <div className="relative mx-auto my-1 flex size-36 items-center justify-center rounded-2xl bg-white p-2 shadow-md">
+                                <TicketQRCode
+                                    value={`PAY|${paymentMethod.toUpperCase()}|${finalPrice}|${movie.title}|${seatsParam}`}
+                                    size={128}
+                                />
                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                    <div className={`size-7 rounded-lg border-2 border-white flex items-center justify-center text-white text-[9px] font-black shadow-md ${
-                                        paymentMethod === "momo" ? "bg-[#a50064]" : paymentMethod === "zalopay" ? "bg-[#0068ff]" : paymentMethod === "vnpay" ? "bg-[#005ba6]" : "bg-[#090d14]"
-                                    }`}>
-                                        {paymentMethod === "momo" ? "M" : paymentMethod === "zalopay" ? "Z" : paymentMethod === "vnpay" ? "V" : "QR"}
+                                    <div
+                                        className={`size-7 rounded-lg border-2 border-white flex items-center justify-center text-white text-[9px] font-black shadow-md ${
+                                            paymentMethod === "momo"
+                                                ? "bg-[#a50064]"
+                                                : paymentMethod === "zalopay"
+                                                  ? "bg-[#0068ff]"
+                                                  : paymentMethod === "vnpay"
+                                                    ? "bg-[#005ba6]"
+                                                    : "bg-[#090d14]"
+                                        }`}
+                                    >
+                                        {paymentMethod === "momo"
+                                            ? "M"
+                                            : paymentMethod === "zalopay"
+                                              ? "Z"
+                                              : paymentMethod === "vnpay"
+                                                ? "V"
+                                                : "QR"}
                                     </div>
                                 </div>
                             </div>
@@ -536,79 +621,112 @@ export const CheckoutPage = () => {
                 </div>
             </div>
 
-            {/* 4. Success Card — Hiển thị khi thanh toán thành công */}
+            {/* 4. Success Card — Hiển thị vé kèm QR thật, địa chỉ rạp và nút Xuất vé PDF */}
             {isSuccess && bookingResult && (
                 <div className="mt-14 overflow-hidden rounded-3xl border border-[#2a3c25] bg-[#121f15] p-6 sm:p-8 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                                <CheckCircle2 className="size-6 text-[#caef6b]" />
-                                <h3 className="text-xl font-black text-white">Vé đã sẵn sàng!</h3>
-                            </div>
-                            <p className="text-xs text-[#9ba9ba]">
-                                Chúc mừng bạn đã hoàn tất đặt vé. Mã vé điện tử đã được kích hoạt.
-                            </p>
-                            <div className="pt-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[#9ba9ba]">
-                                <span>Phim: <strong className="text-white">{movie.title}</strong></span>
-                                <span>Rạp: <strong className="text-white">{cinemaName} ({roomName})</strong></span>
-                                <span>Suất: <strong className="text-white">{showTime} · {showDate}</strong></span>
-                                <span>Ghế: <strong className="text-[#caef6b]">{seatsParam}</strong></span>
-                                <span>Mã vé: <strong className="font-mono text-[#caef6b]">{bookingResult.bookingCode}</strong></span>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                            {/* Mã QR vé thật quét được */}
+                            <div className="shrink-0 rounded-2xl bg-white p-3 shadow-lg">
+                                <TicketQRCode
+                                    value={buildTicketQRPayload({
+                                        bookingCode: bookingResult.bookingCode,
+                                        movieTitle: movie.title,
+                                        cinemaName: bookingResult.cinemaName || cinemaName,
+                                        roomName: bookingResult.roomName || roomName,
+                                        showDate: bookingResult.showDate || showDate,
+                                        showtime: bookingResult.showtime || showTime,
+                                        seats: seatsParam,
+                                        qrUrl: bookingResult.qrCode,
+                                    })}
+                                    size={116}
+                                />
                             </div>
 
-                            {/* Thông tin bổ sung */}
-                            <div className="pt-3 flex flex-wrap items-center gap-3">
-                                <div className="flex items-center gap-1.5 rounded-xl border border-[#2a3c25] bg-[#162518] px-3 py-1.5 text-xs">
-                                    <Sparkles className="size-3.5 text-[#caef6b]" />
-                                    <span className="text-[#caef6b] font-semibold">+{bookingResult.pointsEarned} điểm tích lũy</span>
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="size-6 text-[#caef6b]" />
+                                    <h3 className="text-xl font-black text-white">
+                                        Vé điện tử đã sẵn sàng!
+                                    </h3>
                                 </div>
-                                {bookingResult.discountAmount > 0 && (
-                                    <div className="flex items-center gap-1.5 rounded-xl border border-[#243041] bg-[#1a2431] px-3 py-1.5 text-xs">
-                                        <Star className="size-3.5 text-amber-400" />
-                                        <span className="text-white font-semibold">Đã giảm {formatPrice(bookingResult.discountAmount)}</span>
+                                <p className="text-xs text-[#9ba9ba]">
+                                    Chúc mừng bạn đã hoàn tất đặt vé. Bạn có thể tải ngay file vé PDF kèm mã QR và địa chỉ rạp bên dưới.
+                                </p>
+                                <div className="pt-1.5 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[#9ba9ba]">
+                                    <span>
+                                        Phim: <strong className="text-white">{movie.title}</strong>
+                                    </span>
+                                    <span>
+                                        Rạp:{" "}
+                                        <strong className="text-white">
+                                            {bookingResult.cinemaName || cinemaName} (
+                                            {bookingResult.roomName || roomName})
+                                        </strong>
+                                    </span>
+                                    <span>
+                                        Suất:{" "}
+                                        <strong className="text-white">
+                                            {bookingResult.showtime || showTime} ·{" "}
+                                            {bookingResult.showDate || showDate}
+                                        </strong>
+                                    </span>
+                                    <span>
+                                        Ghế: <strong className="text-[#caef6b]">{seatsParam}</strong>
+                                    </span>
+                                    <span>
+                                        Mã vé:{" "}
+                                        <strong className="font-mono text-[#caef6b]">
+                                            {bookingResult.bookingCode}
+                                        </strong>
+                                    </span>
+                                </div>
+                                <p className="flex items-center gap-1.5 text-xs text-[#d3dce7]">
+                                    <MapPin className="size-3.5 text-[#caef6b] shrink-0" />
+                                    <span>Địa chỉ: {effectiveCinemaAddress}</span>
+                                </p>
+
+                                <div className="pt-2 flex flex-wrap items-center gap-3">
+                                    <div className="flex items-center gap-1.5 rounded-xl border border-[#2a3c25] bg-[#162518] px-3 py-1.5 text-xs">
+                                        <Sparkles className="size-3.5 text-[#caef6b]" />
+                                        <span className="text-[#caef6b] font-semibold">
+                                            +{bookingResult.pointsEarned} điểm tích lũy
+                                        </span>
                                     </div>
-                                )}
-                                <div className="flex items-center gap-1.5 rounded-xl border border-[#243041] bg-[#1a2431] px-3 py-1.5 text-xs">
-                                    <span className="text-white font-semibold">Thanh toán: {formatPrice(bookingResult.finalPrice)}</span>
+                                    {bookingResult.discountAmount > 0 && (
+                                        <div className="flex items-center gap-1.5 rounded-xl border border-[#243041] bg-[#1a2431] px-3 py-1.5 text-xs">
+                                            <Star className="size-3.5 text-amber-400" />
+                                            <span className="text-white font-semibold">
+                                                Đã giảm {formatPrice(bookingResult.discountAmount)}
+                                            </span>
+                                        </div>
+                                    )}
+                                    <div className="flex items-center gap-1.5 rounded-xl border border-[#243041] bg-[#1a2431] px-3 py-1.5 text-xs">
+                                        <span className="text-white font-semibold">
+                                            Thanh toán: {formatPrice(bookingResult.finalPrice)}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex flex-wrap items-center gap-3 shrink-0">
                             <Button
-                                onClick={() => {
-                                    // Tạo dữ liệu vé text để download
-                                    const ticketText = `
-═══════════════════════════════════════
-         CINEMA MANAGEMENT — VÉ ĐIỆN TỬ
-═══════════════════════════════════════
-Mã vé: ${bookingResult.bookingCode}
-Phim: ${movie.title}
-Rạp: ${cinemaName} (${roomName})
-Suất: ${showTime} · ${showDate}
-Ghế: ${seatsParam}
-Tổng: ${formatPrice(bookingResult.finalPrice)}
-QR Check-in: ${bookingResult.qrCode}
-═══════════════════════════════════════
-Quét mã QR tại quầy trước giờ chiếu 15p.
-`.trim()
-                                    const blob = new Blob([ticketText], { type: "text/plain" })
-                                    const url = URL.createObjectURL(blob)
-                                    const a = document.createElement("a")
-                                    a.href = url
-                                    a.download = `ve-${bookingResult.bookingCode}.txt`
-                                    a.click()
-                                    URL.revokeObjectURL(url)
-                                }}
+                                onClick={() => void handleExportPdf()}
+                                disabled={isExportingPdf}
                                 variant="outline"
-                                className="rounded-xl border-[#2a3c25] bg-[#162518] text-xs font-bold text-[#caef6b] hover:bg-[#1e3321]"
+                                className="rounded-xl border-[#caef6b]/50 bg-[#162518] text-xs font-bold text-[#caef6b] hover:bg-[#1e3321] cursor-pointer"
                             >
-                                <Download className="mr-1.5 size-4" />
-                                Lưu vé
+                                {isExportingPdf ? (
+                                    <Loader2 className="mr-1.5 size-4 animate-spin" />
+                                ) : (
+                                    <FileDown className="mr-1.5 size-4" />
+                                )}
+                                Xuất vé PDF
                             </Button>
                             <Button
                                 onClick={() => navigate("/my-tickets")}
-                                className="rounded-xl bg-[#caef6b] text-xs font-bold text-[#090d14] hover:bg-[#b8df5b]"
+                                className="rounded-xl bg-[#caef6b] text-xs font-bold text-[#090d14] hover:bg-[#b8df5b] cursor-pointer"
                             >
                                 Xem vé của tôi
                             </Button>
@@ -621,7 +739,6 @@ Quét mã QR tại quầy trước giờ chiếu 15p.
             {simulatingPayment && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
                     <div className="w-full max-w-md rounded-3xl border border-[#243041] bg-[#121923] p-7 shadow-2xl text-center space-y-5">
-                        {/* Gateway Branding */}
                         <div className="flex items-center justify-center gap-3">
                             {paymentMethod === "momo" && (
                                 <div className="flex size-12 items-center justify-center rounded-2xl bg-[#a50064] text-white font-black text-xl shadow-lg shadow-[#a50064]/30">
@@ -650,11 +767,12 @@ Quét mã QR tại quầy trước giờ chiếu 15p.
                                     {paymentMethod === "card" && "Cổng thanh toán Thẻ OnePay"}
                                     {paymentMethod === "vnpay" && "Cổng thanh toán VNPAY-QR"}
                                 </h4>
-                                <p className="text-[11px] text-[#9ba9ba]">Mô phỏng giao dịch trực tuyến an toàn</p>
+                                <p className="text-[11px] text-[#9ba9ba]">
+                                    Mô phỏng giao dịch trực tuyến an toàn
+                                </p>
                             </div>
                         </div>
 
-                        {/* Amount */}
                         <div className="rounded-2xl border border-[#1f2c3d] bg-[#090d14] p-4">
                             <span className="text-[11px] text-[#9ba9ba]">Số tiền thanh toán:</span>
                             <p className="text-2xl font-black text-[#caef6b] mt-0.5">
@@ -665,7 +783,6 @@ Quét mã QR tại quầy trước giờ chiếu 15p.
                             </p>
                         </div>
 
-                        {/* Status animation */}
                         <div className="py-2 flex flex-col items-center gap-3">
                             {simulationStep === "gateway" && (
                                 <>

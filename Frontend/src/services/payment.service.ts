@@ -22,6 +22,7 @@ export interface CheckoutPayload {
   userId: number;
   showtimeId: number;
   seats: string[];
+  sessionId?: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -40,19 +41,35 @@ export interface CheckoutResult {
   finalPrice: number;
   pointsEarned: number;
   paymentStatus: string;
+  cinemaName?: string;
+  cinemaAddress?: string;
+  cinemaPhone?: string;
+  roomName?: string;
+  showtime?: string;
+  endTime?: string;
+  showDate?: string;
+  format?: string;
 }
 
 export interface TicketDetail {
   id: number;
   bookingCode: string;
   movieTitle: string;
+  movieRating?: string;
+  movieDuration?: number;
+  movieGenre?: string;
   posterUrl: string | null;
   cinemaName: string;
+  cinemaAddress?: string;
+  cinemaPhone?: string;
   roomName: string;
   showtime: string;
   endTime: string;
   showDate: string;
   seats: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
   totalPrice: number;
   discountAmount: number;
   finalPrice: number;
@@ -81,15 +98,16 @@ export interface MyTicketsData {
 // ══════════════════════════════════════════════════════════════
 
 export const paymentService = {
-  // Xác thực mã giảm giá (Voucher promo code)
-  async validateVoucher(code: string, orderTotal: number): Promise<ApiResponse<ValidateVoucherResponse>> {
+  async validateVoucher(
+    code: string,
+    orderTotal: number
+  ): Promise<ApiResponse<ValidateVoucherResponse>> {
     return apiRequest<ValidateVoucherResponse>("/payment/validate-voucher", {
       method: "POST",
       body: JSON.stringify({ code, orderTotal }),
     });
   },
 
-  // Thanh toán & Xuất vé QR
   async checkout(payload: CheckoutPayload): Promise<ApiResponse<CheckoutResult>> {
     return apiRequest<CheckoutResult>("/payment/checkout", {
       method: "POST",
@@ -97,23 +115,22 @@ export const paymentService = {
     });
   },
 
-  //Lấy danh sách vé của tôi
   async getMyTickets(userId: number): Promise<ApiResponse<MyTicketsData>> {
     return apiRequest<MyTicketsData>(`/payment/my-tickets?userId=${userId}`);
   },
 
-  //4. Lấy chi tiết 1 vé theo mã booking
   async getTicketByCode(bookingCode: string): Promise<ApiResponse<TicketDetail>> {
     return apiRequest<TicketDetail>(`/payment/ticket/${encodeURIComponent(bookingCode)}`);
   },
 
-  //5. Lấy điểm tích lũy thành viên
   async getMemberPoints(userId: number): Promise<ApiResponse<{ userId: number; points: number }>> {
     return apiRequest<{ userId: number; points: number }>(`/payment/member-points?userId=${userId}`);
   },
 
-  //6. Hủy vé & Hoàn tiền
-  async cancelTicket(bookingCode: string, userId?: number): Promise<ApiResponse<{ success: boolean; message: string }>> {
+  async cancelTicket(
+    bookingCode: string,
+    userId?: number
+  ): Promise<ApiResponse<{ success: boolean; message: string }>> {
     return apiRequest<{ success: boolean; message: string }>("/payment/cancel-ticket", {
       method: "POST",
       body: JSON.stringify({ bookingCode, userId }),
